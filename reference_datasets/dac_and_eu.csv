@@ -1,0 +1,83 @@
+﻿Donor,source_orgtype,sourceObjects_Organization.id,destinationObjects_Organization.id,destination_orgtype
+Agence Française de Développement,DAC governments,9946,9946,DAC governments
+Australia,DAC governments,4391,4391,DAC governments
+Australian Aid,DAC governments,12,12,DAC governments
+Austria,DAC governments,4546,4546,DAC governments
+Belgium,DAC governments,2927,2927,DAC governments
+Canada,DAC governments,2928,2928,DAC governments
+Centers for Disease Control and Prevention,DAC governments,4974,4974,DAC governments
+Comité Interministériel de l'Aide Alimentaire,DAC governments,12062,12062,DAC governments
+Czech Republic,DAC governments,2932,2932,DAC governments
+Danish Emergency Relief Fund,DAC governments,10269,10269,DAC governments
+Denmark,DAC governments,3776,3776,DAC governments
+Expertise France,DAC governments,9376,9376,DAC governments
+Finland,DAC governments,5295,5295,DAC governments
+France,DAC governments,4314,4314,DAC governments
+Germany,DAC governments,4306,4306,DAC governments
+Greece,DAC governments,4547,4547,DAC governments
+Hungary,DAC governments,4844,4844,DAC governments
+Iceland,DAC governments,4845,4845,DAC governments
+Innovation Norway,DAC governments,11794,11794,DAC governments
+Ireland,DAC governments,3009,3009,DAC governments
+Italian Agency for Development Cooperation,DAC governments,8924,8924,DAC governments
+Italy,DAC governments,3774,3774,DAC governments
+Japan,DAC governments,4537,4537,DAC governments
+Japan International Cooperation Agency,DAC governments,476,476,DAC governments
+KFW Development,DAC governments,6544,6544,DAC governments
+"Korea, Republic of",DAC governments,2929,2929,DAC governments
+Luxembourg,DAC governments,4384,4384,DAC governments
+"National Lottery Community Fund, the UK",DAC governments,10306,10306,DAC governments
+Netherlands,DAC governments,3008,3008,DAC governments
+New Zealand,DAC governments,5369,5369,DAC governments
+Norway,DAC governments,2930,2930,DAC governments
+Norwegian Research Council,DAC governments,11451,11451,DAC governments
+Poland,DAC governments,86,86,DAC governments
+Portugal,DAC governments,5301,5301,DAC governments
+Reunion,DAC governments,88,88,DAC governments
+Slovakia,DAC governments,93,93,DAC governments
+Slovenia,DAC governments,4829,4829,DAC governments
+Spain,DAC governments,5319,5319,DAC governments
+Spanish Agency for International Development Cooperation (AECID),DAC governments,11795,11795,DAC governments
+Sweden,DAC governments,2921,2921,DAC governments
+Swiss Development Cooperation/Swiss Humanitarian Aid,DAC governments,2646,2646,DAC governments
+Switzerland,DAC governments,2924,2924,DAC governments
+The Norwegian Agency for Development Cooperation,DAC governments,11617,11617,DAC governments
+United Kingdom,DAC governments,2917,2917,DAC governments
+United States Agency for International Development,DAC governments,8492,8492,DAC governments
+United States Department of Defense,DAC governments,5822,5822,DAC governments
+United States of America,DAC governments,2933,2933,DAC governments
+Lithuania,DAC governments,3272,3272,DAC governments
+Estonia,DAC governments,3003,3003,DAC governments
+Deutsche Gesellschaft für Internationale Zusammenarbeit,DAC governments,2987,2987,DAC governments
+United States Department of State,DAC governments,14296,14296,DAC governments
+"Foreign, Commonwealth & Development Office",DAC governments,13203,13203,DAC governments
+German Federal Foreign Office Auswärtiges Amt,DAC governments,13808,13808,DAC governments
+European Commission ,Multilateral: EC,2966,2966,Multilateral: EC
+European Commission's Humanitarian Aid and Civil Protection Department,Multilateral: EC,8523,8523,Multilateral: EC
+European Commission Directorate-General for International Partnerships (formerly EuropeAid DEVCO),Multilateral: EC,8524,8524,Multilateral: EC
+DG for Neighbourhood and Enlargement Negotiations,Multilateral: EC,12197,12197,Multilateral: EC
+European Union Trust Fund Bêkou for the Central African Republic,Multilateral: EC,6789,6789,Multilateral: EC
+EC EU Instrument contributing to Stability and Peace 2023,Multilateral: EC,12609,12609,Multilateral: EC
+The European Bank for Reconstruction and Development,Multilateral: EC,13448,13448,Multilateral: EC
+EU Regional Trust Fund in Response to the Syrian Crisis (Madad Fund),Multilateral: EC,6936,6936,Multilateral: EC
+ECHO DFID contribution,Multilateral: EC,8011,8011,Multilateral: EC
+European Commission Civil Protection Mechanism,Multilateral: EC,8421,8421,Multilateral: EC
+European Commission Rapid Reaction Mechanism,Multilateral: EC,8514,8514,Multilateral: EC
+European Commission Directorate-General External Relations,Multilateral: EC,8525,8525,Multilateral: EC
+European Investment Bank,Multilateral: EC,8541,8541,Multilateral: EC
+European Commission Directorate General for Development,Multilateral: EC,8556,8556,Multilateral: EC
+European Commission DG1,Multilateral: EC,8577,8577,Multilateral: EC
+European Commission - EU Facility for Refugees in Turkey,Multilateral: EC,8650,8650,Multilateral: EC
+European Union Emergency Trust Fund for Africa,Multilateral: EC,12078,12078,Multilateral: EC
+European External Action Service,Multilateral: EC,13154,13154,Multilateral: EC
+Council of Europe Development Bank,Multilateral: EC,2176,2176,Multilateral: EC
+African Development Bank,Multilateral: Development Bank,3787,3787,Multilateral: Development Bank
+Caribbean Development Bank ,Multilateral: Development Bank,4344,4344,Multilateral: Development Bank
+Islamic Development Bank,Multilateral: Development Bank,110,110,Multilateral: Development Bank
+World Bank,Multilateral: Development Bank,4820,4820,Multilateral: Development Bank
+International Development Association,Multilateral: Development Bank,6089,6089,Multilateral: Development Bank
+International Bank for Reconstruction & Development (World Bank),Multilateral: Development Bank,8509,8509,Multilateral: Development Bank
+Asian Development Bank,Multilateral: Development Bank,3243,3243,Multilateral: Development Bank
+Multi-Donor Trust Fund for Sudan,Multilateral: Development Bank,3414,3414,Multilateral: Development Bank
+Multi-Donor Trust Fund for South Sudan,Multilateral: Development Bank,1480,1480,Multilateral: Development Bank
+NaCSA/World Bank,Multilateral: Development Bank,8599,8599,Multilateral: Development Bank
