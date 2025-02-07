@@ -1,0 +1,168 @@
+Question,Question type
+3 - Does this project involve Cash and Voucher Assistance (CVA)?,flagCVA
+3.1 - Estimated % of requirements to be used for cash transfer,quantC
+3.2 - Estimated % of requirements to be used for voucher assistance,quantV
+Is any part of this project cash based intervention?,flagCVA
+Restriction,otherCVA
+Conditionality,otherCVA
+2 - Does this project involve Cash and Voucher Assistance (CVA)?,flagCVA
+2.1 - Estimated % of requirements to be used for cash transfer,quantC
+2.2 - Estimated % of requirements to be used for voucher assistance,quantV
+"2.2 - % du budget global du projet, prévu pour l’assistance en coupons",quantV
+"2.1 - % du budget global du projet, prévu pour l’assistance par transfert monétaire",quantC
+2 - TRANSFERT MONETAIRE,flagCVA
+4.1.2. % estimé du budget prévu pour l’assistance en coupons,quantV
+4.1.1. % estimé du budget prévu pour l’assistance par transfert monétaire,quantC
+4.1 Transfert monétaire inclus ?,flagCVA
+Comprend-il l’assistance par transfert monétaire-coupons ?,flagCVA
+% estimé du budget prévu pour l’assistance par transfert monétaire / Estimated % of requirements to be used for cash transfer,quantC
+% estimé du budget prévu pour l’assistance en coupons / Estimated % of requirements to be used for voucher assistance,quantV
+3.1.1. % estimé du budget prévu pour l’assistance par transfert monétaire / Estimated % of requirements to be used for cash transfer,quantC
+3.1. Transfert monétaire inclus ?,flagCVA
+1.1.2. ¿Cuál es el porcentaje estimado del presupuesto solicitado utilizado para cupones?,quantV
+1.1.1. ¿Cuál es el porcentaje estimado del presupuesto solicitado utilizado para transferencias monetarias?,quantC
+1.1. ¿Transferencias monetarias o cupones?,flagCVA
+2.1.9 - Estimated % of project funding to be used for Cash Transfer Programs (CTPs).,quantCVA
+2.1.8 - Delivery Mechanism,otherCVA
+2.1.7 - Conditionality,otherCVA
+2.1.6 - Is your project linked to social protection mechanisms (PSNP etc).,otherCVA
+2.1.5 - Is the transfer value aligned with National CWG and Cluster guidance?,otherCVA
+2.1.4 - Does your organization participate in Sub-National Cash Working Groups (SNCWG) for your operational area?,otherCVA
+2.1.3 - Does your organization participate in the National Cash Working Group?,otherCVA
+2.1.2 - Has the project design considered market functionality?,otherCVA
+2.1.1 - Is it better to use cash or vouchers instead of in kind?,otherCVA
+2.1 - Does this project involve CVA?,flagCVA
+"2.1.4.1 - If the answer on the question 2.1.4 is ""Yes"", which Sub-National Cash Working Groups (SNCWG) that your organization participates in for your operational area ?",otherCVA
+1.1.2. ¿Cuál es el porcentaje estimado de los requerimientos utilizados para cupones?,quantV
+1.1.1. ¿Cuál es el porcentaje estimado de los requerimientos utilizados para transferencias monetarias?,quantC
+6 - Check this box if any part of this project is cash or voucher assistance (CVA),flagCVA
+6.1 - Estimated percentage of project requirements to be used for cash,quantC
+6.2 - Estimated percentage of project requirements to be used for vouchers,quantV
+8.3 - Estimated total number of beneficiaries targeted with cash and/or vouchers,otherCVA
+8.2 - Estimated % of requirements to be used for voucher assistance,quantV
+8.1 - Estimated % of requirements to be used for cash transfer,quantC
+8 - Does this project involve Cash and Voucher Assistance (CVA)?,flagCVA
+8.1.c - Estimated total number of beneficiaries targeted with cash and/or vouchers,otherCVA
+8.1.b - Estimated % of requirements to be used for voucher assistance,quantV
+8.1.a - Estimated % of requirements to be used for cash transfer,quantC
+8.1 - Does this project involve CVA?,flagCVA
+2.1.a - Estimated % of requirements to be used for cash transfer,quantC
+2.1.b - Estimated % of requirements to be used for voucher assistance,quantV
+2.1.c - Estimated total number of beneficiaries targeted with cash and/or vouchers,otherCVA
+% estimé du budget prévu pour l’assistance en coupons,quantV
+Est le transfer monétaire inclus?,flagCVA
+% estimé du budget prévu pour l’assistance par transfert monétaire,quantC
+3.1.2. % estimé du budget prévu pour l’assistance en coupons,quantV
+3.1.1. % estimé du budget prévu pour l’assistance par transfert monétaire,quantC
+3.1. Transfer monétaire inclus?,flagCVA
+3.2 - Estimated percentage of project requirements to be used for vouchers,quantV
+3.1 - Estimated percentage of project requirements to be used for cash transfers,quantC
+3 - Does this project involve CTP ?,flagCVA
+Est-ce qu'une partie de ce projet est basée sur une intervention financière?,otherCVA
+Ce projet comprend-il l’assistance par transfert monétaire / coupons? («Cash and Voucher Assistance / CVA»),flagCVA
+Estimated % of project requirements to be used for mixed,quantCVA
+Estimated % of project requirements to be used for cash,quantC
+Estimated % of project requirements to be used for vouchers,quantV
+6.1.b - Estimated percentage of project requirements to be used for vouchers,quantV
+6.1.a - Estimated percentage of project requirements to be used for cash,quantC
+6.1 - Check this box if this project is CVA,flagCVA
+4.2 - Modality,otherCVA
+4.1 - Conditionality,otherCVA
+4 - Does this project involve CTP ?,flagCVA
+5 - Is any part of this project cash transfer programming?,flagCVA
+5.1 - Restriction,otherCVA
+5.2 - Conditionality,otherCVA
+5.3 - Percentage of requirements to be used for cash,quantC
+5.1.d State the percentage of the response delivered by In-kind modality if applicable :,otherCVA
+5.1.c State the percentage of the response delivered by the cash modality if applicable :,quantC
+5.1.b State the percentage of the response delivered by the voucher modality if applicable :,quantV
+3.2 - Estimated % of requirements to be used for voucher assistance* Include overhead costs associated with the vouchers. Write '0' if the project only uses cash transfers.,quantV
+3.1 - Estimated % of requirements to be used for cash transfer* Include overhead costs associated with the transfer. Write '0' if the project only uses voucher assistance.,quantC
+3 - Does this project involve CVA?,flagCVA
+Estimated % of requirements to be used for voucher assistance,quantV
+Estimated % of requirements to be used for cash transfer,quantC
+Does this project involve Cash and Voucher Assistance (CVA)?,flagCVA
+Estimated % of project funding to be used for CTPs,quantCVA
+Delivery Mechanism,otherCVA
+"If applicable, which Sub-National Cash Working Groups (SNCWG) that your organization participates in for your operational area ?",otherCVA
+Does your organization participate in the National Cash Working Group?,otherCVA
+Explain how the project design considered market functionality ?,otherCVA
+What is the justification for using cash or vouchers instead of in kind?,otherCVA
+Does this project involve CTP ?,flagCVA
+2.1.7 - Estimated % of project funding to be used for CTPs,quantCVA
+2.1.6 - Delivery Mechanism,otherCVA
+2.1.5 - Conditionality,otherCVA
+"2.1.4.1 - If the answer of the question 2.1.4 is ""Yes"", which Sub-National Cash Working Groups (SNCWG) that your organization participates in for your operational area ?",otherCVA
+2.1.2 - Explain how the project design considered market functionality?,otherCVA
+2.1.1 - What is the justification for using cash or vouchers instead of in kind?,otherCVA
+2.1 - Does this project involve CTP?,flagCVA
+4 - Is any part of this project cash-based intervention?,flagCVA
+4.1 - Restrictions,otherCVA
+4.2 - Please estimate the percentage of requirements for cash.,quantC
+4.3 - Please estimate the percentage for vouchers?,quantV
+5.1.6. Estimated percentage of project funding to be used for CVA,quantCVA
+5.1.5. Delivery Mechanism (can select multiple),otherCVA
+5.1.4. Restrictions,otherCVA
+5.1.3. Conditionality (can select multiple),otherCVA
+5.1.2. Explain how the project design considered market functionality,otherCVA
+5.1.1. What is the justification for using cash or vouchers instead of in kind?,otherCVA
+5.1. Cash and Voucher Assistance (CVA)?,flagCVA
+8.1 -  Estimated % of requirements to be used for cash transfer,quantC
+9.2 - Estimated % of requirements to be used for voucher assistance,quantV
+9.1 -  Estimated % of requirements to be used for cash transfer,quantC
+9 - Does this project involve CVA?,flagCVA
+12 - Does this project involve CVA?,flagCVA
+Ce projet comprend-il l’assistance par transfert monétaire?,flagCVA
+7 - Is any part of this project cash transfer programming?,flagCVA
+7.1 - Restrictions,otherCVA
+7.2 - Estimated percentage of budget to be used for cash,quantC
+7 - Cash transfer programming?,flagCVA
+¿Alguna parte de su proyecto está basada en transferencias monetarias o cupones?,flagCVA
+¿Cuál es el porcentaje estimado del presupuesto solicitado utilizado para transferencias monetarias?,quantC
+¿Cuál es el porcentaje estimado del presupuesto solicitado utilizado para cupones?,quantV
+2.1.2. ¿Cuál es el porcentaje estimado del presupuesto solicitado utilizado para cupones?,quantV
+2.1.1. ¿Cuál es el porcentaje estimado del presupuesto solicitado utilizado para transferencias monetarias?,quantC
+2.1. ¿Transferencias monetarias o cupones?,flagCVA
+4.2 - Estimated % of requirements to be used for voucher assistance,quantV
+4.1 - Estimated % of requirements to be used for cash transfer,quantC
+4. - Check this box if this project is CVA,flagCVA
+Is any part of this project cash transfer programming (including vouchers)?,flagCVA
+5.2 - Estimated % of requirements to be used for voucher assistance,quantV
+5.1 - Estimated % of requirements to be used for cash transfer,quantC
+5 - Does this project involve CTP ?,flagCVA
+5.1 Transfert monétaire inclus ?,flagCVA
+12.2 - Estimated % of requirements to be used for voucher assistance,quantV
+12.1 -  Estimated % of requirements to be used for cash transfer,quantC
+3.1 ¿qué modalidad utilizaría?,otherCVA
+3 - TRANSFERENCIAS MONETARIAS,flagCVA
+4.1 - Does this project involve CTP ?,flagCVA
+4.1.2 - Estimated % of requirements to be used for voucher assistance,quantV
+4.1.1 - Estimated % of requirements to be used for cash transfer,quantC
+Estimated percentage of project requirements to be used for cash,quantC
+Is any part of this project cash transfer programming?,flagCVA
+Is any part of this project cash based intervention,flagCVA
+Total number of individuals targeted for Cash,otherCVA
+Este proyecto se basa en transferencias monetarias?,flagCVA
+% estimado destinado a transferencias monetarias,quantC
+3.1.2. % estimé du budget prévu pour l’assistance en coupons / Estimated % of requirements to be used for voucher assistance,quantV
+6 - Ce projet intègre t-il une composante cash ?,flagCVA
+10 - Does this project involve CVA?,flagCVA
+10.1 -  Estimated % of requirements to be used for cash transfer,quantC
+10.2 - Estimated % of requirements to be used for voucher assistance,quantV
+3.1. Monétaire-Coupons / Cash-Based,flagCVA
+6.1 -Projet intègre t-il une composante cash?,flagCVA
+6.2 - Le choix de la modalité de transfert monétaire s'est-elle aussi appuyée sur les résultats d'une analyse rapide de genre ?,otherCVA
+6.3 - Le marqueur genre a -t-il été pris en compte dans la conception de la composante de transfert monétaire ?,otherCVA
+3. Is the project using cash or voucher assistance (CVA) modality?,flagCVA
+3.1. Sectoral cash,flagCVA
+3.2. MPC,flagCVA
+3.2.a. % of financial requirement targeted in US$ for cash programming,quantC
+3.2.b. Number of targeted people for cash programming,otherCVA
+4 - Does this project involve CVA?,flagCVA
+3 - Does this project involve CTP?,flagCVA
+1.1 - Does this project involve CVA?,flagCVA
+1.1.1 - Estimated % of requirements to be used for cash transfer* Include overhead costs associated with the transfer. Write '0' if the project only uses voucher assistance.,quantC
+1.1.2 - Estimated % of requirements to be used for voucher assistance* Include overhead costs associated with the vouchers. Write '0' if the project only uses cash transfers.,quantV
+3.1.1. % estimé du projet en espèces-coupon / % estimated of the project for cash-voucher,quantV
+3.1.b. Number of targeted people for cash programming,otherCVA
+3.1.a. % of financial requirement targeted in US$ for cash programming,quantC
