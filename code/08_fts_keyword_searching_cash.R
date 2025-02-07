@@ -184,6 +184,4 @@ fts_flagged <- fts[
 table(fts$relevance)
 table(fts_flagged$relevance_method)
 
-fts_flagged$all_text = NULL
-
 fwrite(fts_flagged, "output/fts_output_CVA.csv")
