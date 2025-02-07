@@ -190,3 +190,18 @@ This script trains a machine learning model to classify FTS flows as relevant or
 
 **Purpose:**
 - To train a machine learning model that can classify FTS flows based on text descriptions, with a focus on handling class imbalance using a weighted loss function.
+
+### code/09_calculate_cva.R
+
+This script calculates the Cash and Voucher Assistance (CVA) amounts from the flagged FTS flows. It determines the CVA amount based on sector, method, cluster relevance, project CVA percentage, and machine learning predictions. It also prepares a file for manual classification and combines the results.
+
+**Inputs:**
+- A CSV file containing FTS flows flagged as CVA-related, saved as `fts_output_CVA.csv` in the "output" directory.
+- A manually classified CSV file (if available)
+
+**Outputs:**
+- A CSV file containing flows to be manually classified, saved as `cva_to_manually_classify.csv` in the "output" directory.
+- A CSV file containing the final CVA amounts, saved as `fts_cva.csv` in the "output" directory.
+
+**Purpose:**
+- To calculate CVA amounts from flagged FTS flows and prepare data for manual classification.

@@ -63,7 +63,19 @@ manual_classify_index = which(
 )
 fts_manual = fts_flagged[manual_classify_index,]
 fts_manual$CVAamount_type = "Manual"
-fwrite(fts_manual, "output/cva_to_manually_classify.csv")
+# Read last manual file
+fts_prior_manual = fread("reference_datasets/Mike_cva_decisions.csv")
+positive_ids = subset(fts_prior_manual, decision %in% c("Decision: accept; judgement", "Decision: include; judgement"))
+
+# Write out those that have not been previously manually reviewed
+fts_manual_uncoded = subset(fts_manual, !id %in% fts_prior_manual$id)
+fwrite(fts_manual_uncoded, "output/cva_to_manually_classify.csv")
+
+# Treat those that have been manually reviewed as Full
+fts_flagged$CVAamount[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)] =
+  fts_flagged$amountUSD[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)]
+fts_flagged$CVAamount_type[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)] = "Manual"
+
 # Manual file is filled out prior to this step
 fts_flagged_output = subset(fts_flagged, CVAamount > 0)
 fts_manually_classified = fread("output/cva_manually_classified.csv")
