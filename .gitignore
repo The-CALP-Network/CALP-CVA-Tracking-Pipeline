@@ -170,3 +170,6 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 .Rhistory
+
+# Private survey data
+reference_datasets/cva_survey_data.xlsx

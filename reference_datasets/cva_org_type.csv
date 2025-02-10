@@ -1,0 +1,21 @@
+destinationObjects_Organization.organizationSubTypes,cva_org_type
+UN Agencies,UN
+International NGOs,NGO
+Internationally Affiliated Organizations,NGO
+International Red Cross/Red Crescent Movement,RCRC
+National NGOs/CSOs,NGO
+,Other
+Red Cross/Red Crescent National Societies,RCRC
+International Government Entities,Other
+National Governments,Other
+Local NGOs/CSOs,NGO
+International Private Organizations,Other
+UN Agencies; International NGOs,Other
+Local/National Private Organizations,NGO
+UN Agencies; International NGOs; UN Agencies,Other
+UN Agencies; UN Agencies,UN
+International Government Entities; International Red Cross/Red Crescent Movement,Other
+Other Multilateral Organizations,UN
+Other Pooled Funds,Other
+Uncategorized Private Organizations,Other
+International NGOs; International NGOs,NGO

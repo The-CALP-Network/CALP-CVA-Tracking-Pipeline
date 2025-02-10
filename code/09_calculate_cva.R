@@ -86,7 +86,7 @@ fts_flagged$CVAamount[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% pos
 fts_flagged$CVAamount_type[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)] = "Manual"
 
 # Manual file is filled out prior to this step
-fts_flagged_output = subset(fts_flagged, CVAamount > 0)
+fts_flagged_output = subset(fts_flagged, CVAamount > 0 & is.finite(CVAamount))
 fts_manually_classified = fread("output/cva_manually_classified.csv")
 fts_cva = rbind(fts_flagged_output, fts_manually_classified)
 fwrite(fts_cva, "output/fts_cva.csv")
