@@ -155,6 +155,11 @@ setnames(to_inference, "description", "text")
 fwrite(to_inference, "classifier_code/fts_to_inference.csv")
 
 # Pause here to run Python inference code
+# cd classifier_code
+# python3 -m virtualenv venv
+# source venv/bin/activate
+# pip install -r requirements.txt
+# python3 flow_inference.py
 
 # Load and join inference data
 inference_output = fread("classifier_code/fts_to_inference_output.csv")
