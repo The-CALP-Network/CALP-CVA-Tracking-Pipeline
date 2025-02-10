@@ -71,7 +71,16 @@ positive_ids = subset(fts_prior_manual, decision %in% c("Decision: accept; judge
 fts_manual_uncoded = subset(fts_manual, !id %in% fts_prior_manual$id)
 fwrite(fts_manual_uncoded, "output/cva_to_manually_classify.csv")
 
-# Treat those that have been manually reviewed as Full
+# Treat those that have been manually reviewed as Full. Enhance training data
+fts_flagged_manual_full = subset(fts_flagged, id %in% positive_ids$id)
+fts_flagged_manual_full = fts_flagged_manual_full[,c("id", "all_text")]
+setnames(fts_flagged_manual_full, "all_text", "text")
+fts_flagged_manual_full$label = 1
+classifier_data = fread("classifier_code/CVA_flow_descriptions.csv")
+fts_flagged_manual_full = subset(fts_flagged_manual_full, !id %in% classifier_data$id)
+fts_flagged_manual_full = subset(fts_flagged_manual_full, !text %in% classifier_data$text)
+classifier_data = rbind(classifier_data, fts_flagged_manual_full)
+fwrite(classifier_data, "classifier_code/CVA_flow_descriptions.csv")
 fts_flagged$CVAamount[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)] =
   fts_flagged$amountUSD[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)]
 fts_flagged$CVAamount_type[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)] = "Manual"
