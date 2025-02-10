@@ -169,10 +169,10 @@ model.forward = types.MethodType(weighted_forward_bert, model)
 model.class_weights = weights
 
 training_args = TrainingArguments(
-    'cva-flow-weighted-classifier',
-    learning_rate=1e-4, # This can be tweaked depending on how loss progresses
-    per_device_train_batch_size=64, # These should be tweaked to match GPU VRAM
-    per_device_eval_batch_size=64,
+    'cva-flow-weighted-classifier2',
+    learning_rate=4e-5, # This can be tweaked depending on how loss progresses
+    per_device_train_batch_size=32, # These should be tweaked to match GPU VRAM
+    per_device_eval_batch_size=32,
     num_train_epochs=10,
     weight_decay=0.01,
     evaluation_strategy='epoch',
@@ -181,6 +181,7 @@ training_args = TrainingArguments(
     load_best_model_at_end=True,
     push_to_hub=False,
     save_total_limit=5,
+    report_to="tensorboard",
 )
 
 trainer = Trainer(

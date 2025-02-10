@@ -190,3 +190,47 @@ This script trains a machine learning model to classify FTS flows as relevant or
 
 **Purpose:**
 - To train a machine learning model that can classify FTS flows based on text descriptions, with a focus on handling class imbalance using a weighted loss function.
+
+### code/09_calculate_cva.R
+
+This script calculates the Cash and Voucher Assistance (CVA) amounts from the flagged FTS flows. It determines the CVA amount based on sector, method, cluster relevance, project CVA percentage, and machine learning predictions. It also prepares a file for manual classification and combines the results.
+
+**Inputs:**
+- A CSV file containing FTS flows flagged as CVA-related, saved as `fts_output_CVA.csv` in the "output" directory.
+- A manually classified CSV file (if available)
+
+**Outputs:**
+- A CSV file containing flows to be manually classified, saved as `cva_to_manually_classify.csv` in the "output" directory.
+- A CSV file containing the final CVA amounts, saved as `fts_cva.csv` in the "output" directory.
+
+**Purpose:**
+- To calculate CVA amounts from flagged FTS flows and prepare data for manual classification.
+
+### code/util_oecd_sdmx.R
+
+This script defines a function to retrieve and process exchange rate data from the OECD SDMX-JSON API. It parses the JSON response and converts it into a structured data frame.
+
+**Inputs:**
+- `url`: The URL of the OECD SDMX-JSON API endpoint to retrieve data from.
+
+**Outputs:**
+- A data frame containing the parsed exchange rate data from the OECD API.
+
+**Purpose:**
+- To provide a utility function for retrieving and processing exchange rate data from the OECD SDMX-JSON API.
+
+### code/util_exchange_rates.R
+
+This script retrieves and processes exchange rate data from various sources, including the OECD, World Bank, and IMF. It combines the data into a single dataset of USD exchange rates for multiple countries and years.
+
+**Inputs:**
+- `reference_datasets/isos.csv`: A CSV file containing ISO country codes and names.
+- `reference_datasets/oecd_ex.csv`: A CSV file containing OECD exchange rate data (if it exists).
+- `reference_datasets/wb_ex.csv`: A CSV file containing World Bank exchange rate data (if it exists).
+- `reference_datasets/ifs.csv`: A CSV file containing IMF exchange rate data (if it exists).
+
+**Outputs:**
+- `reference_datasets/usd_exchange_rates.csv`: A CSV file containing combined USD exchange rates for multiple countries and years.
+
+**Purpose:**
+- To retrieve, process, and combine exchange rate data from multiple sources into a single dataset for analysis.

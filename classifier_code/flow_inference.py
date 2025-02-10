@@ -3,7 +3,7 @@ import torch
 from datasets import load_dataset
 from scipy.special import softmax
 
-card = "alex-miller/cva-flow-weighted-classifier"
+card = "alex-miller/cva-flow-weighted-classifier2"
 tokenizer = AutoTokenizer.from_pretrained(card)
 model = AutoModelForSequenceClassification.from_pretrained(card)
 
