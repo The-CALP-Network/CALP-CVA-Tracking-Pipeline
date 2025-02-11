@@ -122,19 +122,381 @@ return(flows)
 
 The following function will be required to split FTS flows that run across different years by each year, assuming an even distribution over time:
 
-\[Add code for 02\_fts\_split\_rows.R\]
+<details>
+
+<summary>02_fts_split_rows.R</summary>
+
+```R
+fts_split_rows <- function(data, value.cols = "amountUSD", split.col = "destinationObjects_UsageYear.name", split.pattern = "; ", remove.unsplit = T){
+  split.pattern <- trimws(split.pattern)
+  temp <- data[, .(trimws(unlist(strsplit(as.character(get(split.col)), split.pattern))), as.numeric(get(value.cols))/(1+ifelse(is.na(get(split.col)), 0, nchar(get(split.col))-nchar(gsub(split.pattern, "", get(split.col)))))), by=list(rownames(data))]
+  if(remove.unsplit){
+    names(temp) <- c("rownames", split.col, value.cols)
+    data[, (split.col) := NULL]
+    data[, (value.cols) := NULL]
+  } else {
+    names(temp) <- c("rownames", paste0(split.col, ".split"), paste0(value.cols, ".split"))
+  }
+  data <- merge(data[, rownames := rownames(data)], temp, by = "rownames")
+  data[, rownames := NULL]
+  return(data)
+}
+
+```
+
+</details>
 
 The splitting of rows by year was necessary to deflate funding amounts by year later in the next step:
 
-\[Add code for 03\_deflators.R\]
+<details>
+
+<summary>03_deflators.R</summary>
+
+```R
+get_deflators <- function(base_year = 2021, currency = "USD", weo_ver = NULL, approximate_missing = T){
+  suppressPackageStartupMessages(lapply(c("data.table", "httr", "jsonlite","lubridate"), require, character.only=T))
+  
+  if(!dir.exists("weo")){
+    dir.create("weo")
+  }
+  
+  if(is.null(weo_ver)){
+    
+    tyear <- year(Sys.Date())
+    tmonth <- month(Sys.Date())
+    
+    weo_month <- ifelse(tmonth <= 10 & tmonth >= 4, 4, 10)
+    weo_year <- ifelse(tmonth < 4, tyear-1, tyear)
+    
+    weo_ver <- format(as.Date(paste("1", weo_month, weo_year, sep = "-"), "%d-%m-%Y"), "%b%Y")
+  }
+  
+  ##WEO data
+  pweo_ver <- as.Date(paste0("1", weo_ver), "%d%b%Y")
+  weo_year <- year(pweo_ver)
+  weo_month <- month(pweo_ver)
+  weo_month_text <- as.character(lubridate::month(pweo_ver,label = TRUE, abbr = FALSE))
+  weo_filename = paste0("weo/",weo_ver ,"all.xls")
+  if(!file.exists(weo_filename)){
+    while(T){
+      url <- paste0("https://www.imf.org/-/media/Files/Publications/WEO/WEO-Database/", weo_year,"/",weo_month_text, "/WEO", weo_ver ,"all.ashx")
+      response <- GET(url)
+      if(response$headers$`content-type` == "application/vnd.ms-excel") break
+      
+      if(weo_month <= 10 & weo_month > 4){
+        weo_month <- 4
+      } else {
+        if(weo_month <= 4){
+          weo_year <- weo_year - 1
+        }
+        weo_month <- 10
+      }
+      weo_ver <- format(as.Date(paste("1", weo_month, weo_year, sep = "-"), "%d-%m-%Y"), "%b%Y")
+    }
+    download.file(url, destfile=weo_filename)
+  }
+  
+  message("Using IMF WEO version ", weo_ver, ".")
+  
+  weo <- read.delim(weo_filename,sep="\t",na.strings=c("","n/a","--"),check.names=F, fileEncoding="utf-16")
+  weo = data.table(weo)
+  country_codes <- unique(weo[, .(ISO, Country)])
+  country_codes = country_codes[complete.cases(country_codes),]
+  
+  data_cols <- c("ISO", "WEO Subject Code", grep("^\\d{4}$", names(weo), value = T))
+  
+  weo <- melt(weo[, ..data_cols], id.vars = c("ISO", "WEO Subject Code"), variable.factor = F)
+  weo[, value := as.numeric(gsub(",", "", value))]
+  
+  #Fix PSE ISO code
+  weo[ISO == "WBG", ISO := "PSE"]
+  
+  #GDP in current prices
+  if(currency == "USD"){
+    weo_gdp_cur <- weo[`WEO Subject Code` == "NGDPD"]
+  }
+  if(currency == "LCU"){
+    weo_gdp_cur <- weo[`WEO Subject Code` == "NGDP"]
+  }
+  if(currency == "PPP"){
+    weo_gdp_cur <- weo[`WEO Subject Code` == "PPPGDP"]
+  }
+  
+  weo_gdp_cur <- weo_gdp_cur[, .(ISO, variable, gdp_cur = value)]
+  
+  #GDP real growth rates
+  weo_gdp_pcg <- weo[`WEO Subject Code` == "NGDP_RPCH"]
+  
+  #GDP cumulative growth rates
+  weo_gdp_pcg <- weo_gdp_pcg[, gdp_cg := 1+ifelse(is.na(value), 0, value/100), by = ISO]
+  weo_gdp_pcg[, gdp_cg := ifelse(!(!is.na(value) | !is.na(shift(value, -1))), NA, cumprod(gdp_cg)), by = ISO]
+  weo_gdp_pcg[, gdp_cg := gdp_cg/gdp_cg[variable == base_year], by = ISO][, value := NULL]
+  
+  #GDP in constant prices
+  weo_gdp_con <- merge(weo_gdp_pcg[, .(ISO, variable, gdp_cg)], weo_gdp_cur)
+  weo_gdp_con[, `:=` (gdp_con = gdp_cg*gdp_cur[variable == base_year]), by= ISO]
+  
+  #GDP deflators from WEO
+  weo_deflators <- weo_gdp_con[, .(gdp_defl = gdp_cur/gdp_con), by = .(ISO, variable)]
+  weo_deflators <- cbind(weo_deflators, source = "WEO", ver = weo_ver)
+  
+  #Calculate Total DAC
+  oecd_dac_iso3 <- c(
+    "AUS", # Australia
+    "AUT", # Austria
+    "BEL", # Belgium
+    "CAN", # Canada
+    "CZE", # Czech Republic
+    "DNK", # Denmark
+    "EST", # Estonia
+    "FIN", # Finland
+    "FRA", # France
+    "DEU", # Germany
+    "GRC", # Greece
+    "HUN", # Hungary
+    "ISL", # Iceland
+    "IRL", # Ireland
+    "ITA", # Italy
+    "JPN", # Japan
+    "KOR", # South Korea
+    "LTU", # Lithuania
+    "LUX", # Luxembourg
+    "NLD", # Netherlands
+    "NZL", # New Zealand
+    "NOR", # Norway
+    "POL", # Poland
+    "PRT", # Portugal
+    "SVK", # Slovakia
+    "SVN", # Slovenia
+    "ESP", # Spain
+    "SWE", # Sweden
+    "CHE", # Switzerland
+    "GBR", # United Kingdom
+    "USA"  # United States
+  )
+  weo_gdp_con_dac <- weo_gdp_con[ISO %in% oecd_dac_iso3]
+  weo_totaldac_defl <- weo_gdp_con_dac[, .(ISO = "DAC", gdp_defl = sum(gdp_cur, na.rm = T)/sum(gdp_con, na.rm = T), source = "WEO", ver = weo_ver), by = .(variable)]
+  
+  weo_deflators <- rbind(weo_deflators, weo_totaldac_defl)
+  
+  deflators <- weo_deflators
+
+  deflators[, variable := as.numeric(variable)]
+  
+  #GBR copies
+  GBR_copies <- c("AIA", "MSR", "SHN")
+  deflators <- rbind(deflators[!(ISO %in% GBR_copies)], rbindlist(lapply(GBR_copies, function(x) copy(deflators)[ISO == "GBR"][, ISO := x])))
+  
+  #NZL copies
+  NZL_copies <- c("COK", "NIU", "TKL")
+  deflators <- rbind(deflators[!(ISO %in% NZL_copies)], rbindlist(lapply(NZL_copies, function(x) copy(deflators)[ISO == "NZL"][, ISO := x])))
+  
+  #FRA copies
+  FRA_copies <- c("WLF")
+  deflators <- rbind(deflators[!(ISO %in% FRA_copies)], rbindlist(lapply(FRA_copies, function(x) copy(deflators)[ISO == "FRA"][, ISO := x])))
+  
+  #DAC copies
+  if("DAC" %in% deflators$ISO){
+    DAC_copies <- c("CUB", "PRK", "SYR")
+    deflators <- rbind(deflators[!(ISO %in% DAC_copies)], rbindlist(lapply(DAC_copies, function(x) copy(deflators)[ISO == "DAC"][, ISO := x])))
+  }
+  
+  ##Approximate missing
+  if(approximate_missing){
+    missing <- deflators[, .SD[any(is.na(gdp_defl))], by = ISO]
+    missing_weo_gdp <- weo_gdp_con[ISO %in% missing$ISO]
+    missing_weo_gdp[, variable := as.numeric(variable)]
+    missing_weo_gr <- suppressWarnings(missing_weo_gdp[, .(gdp_avg_curg = (gdp_cur[!is.na(gdp_cur) & variable == max(variable[!is.na(gdp_cur)])]/gdp_cur[!is.na(gdp_cur) & variable == min(variable[!is.na(gdp_cur)])])^(1/(max(variable[!is.na(gdp_cur)])-min(variable[!is.na(gdp_cur)]))),
+                        gdp_avg_cong = (gdp_con[!is.na(gdp_con) & variable == max(variable[!is.na(gdp_con)])]/gdp_con[!is.na(gdp_con) & variable == min(variable[!is.na(gdp_con)])])^(1/(max(variable[!is.na(gdp_con)])-min(variable[!is.na(gdp_con)]))))
+                    , by = ISO])
+    missing_weo_gr <- missing_weo_gr[, .(defg = gdp_avg_curg/gdp_avg_cong), by = ISO]
+  
+    missing_defl <- merge(deflators[ISO %in% missing$ISO], missing_weo_gr, by = "ISO")
+    
+    missing_defl_f <- suppressWarnings(missing_defl[, .SD[is.na(gdp_defl) & variable > max(variable[!is.na(gdp_defl)])], by = ISO])
+    missing_defl_b <- suppressWarnings(missing_defl[, .SD[is.na(gdp_defl) & variable < min(variable[!is.na(gdp_defl)])], by = ISO])
+    
+    missing_defl_b[, defg := rev(cumprod(1/defg)), by = ISO]
+    missing_defl_f[, defg := cumprod(defg), by = ISO]
+    
+    missing_defl_b <- suppressWarnings(merge(missing_defl_b[, -"gdp_defl"], missing_defl[ISO %in% missing_defl_b$ISO, .SD[variable == min(variable[!is.na(gdp_defl)])], by = ISO][, .(ISO, gdp_defl)], by = "ISO"))
+    missing_defl_f <- suppressWarnings(merge(missing_defl_f[, -"gdp_defl"], missing_defl[ISO %in% missing_defl_f$ISO, .SD[variable == max(variable[!is.na(gdp_defl)])], by = ISO][, .(ISO, gdp_defl)], by = "ISO"))
+    
+    missing_defl <- rbind(missing_defl_b[, `:=` (gdp_defl = gdp_defl*defg, defg = NULL)], missing_defl_f[, `:=` (gdp_defl = gdp_defl*defg, defg = NULL)])
+    
+    missing_defl[, `:=` (source = paste0(source, "_est"))]
+    
+    deflators <- rbind(deflators[!(paste0(ISO, variable) %in% paste0(missing_defl$ISO, missing_defl$variable))], missing_defl)
+  }
+  
+  #Final out
+  deflators <- deflators[, .(ISO, year = variable, base_year, currency, source, ver, gdp_defl)][order(ISO, year)]
+  return(deflators)
+}
+
+```
+
+</details>
 
 The following code then executes the three steps that were defined above, on top of further manipulations to tidy up the downloaded FTS data (e.g., removing duplicates across API requests across multiple years):
 
-\[Add code for 04\_fts\_curated\_flows.R\]
+<details>
+
+<summary>04_fts_curated_flows.R</summary>
+
+```R
+list.of.packages <- c("tidyverse", "data.table", "jsonlite","rstudioapi")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+suppressPackageStartupMessages(lapply(list.of.packages, require, character.only=T))
+
+getCurrentFileLocation <-  function()
+{
+  this_file <- commandArgs() %>% 
+    tibble::enframe(name = NULL) %>%
+    tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
+    dplyr::filter(key == "--file") %>%
+    dplyr::pull(value)
+  if (length(this_file)==0)
+  {
+    this_file <- rstudioapi::getSourceEditorContext()$path
+  }
+  return(dirname(this_file))
+}
+
+fts_curated_flows <- function(years = 2017:2024, update_years = NA, dataset_path = "fts", base_year = 2022, weo_ver = NULL){
+
+  #Load FTS utility functions and deflators
+  code_dir = getCurrentFileLocation()
+  source(paste(code_dir, "01_fts_get_flows.R", sep="/"))
+  source(paste(code_dir, "02_fts_split_rows.R", sep="/"))
+  source(paste(code_dir, "03_deflators.R", sep="/"))
+
+  if(!dir.exists(dataset_path)){
+    dir.create(dataset_path)
+  }
+  fts_files <- list.files(path = dataset_path, pattern = "fts_")
+  fts_list <- list()
+  for(i in 1:length(years)){
+    run <- T
+    if(!(paste0("fts_", years[i], ".csv") %in% fts_files) | years[i] %in% update_years){
+      message(paste0("Downloading ", years[i]))
+      while(run){
+        tryCatch({
+          fts <- fts_get_flows(year = years[i])
+          run <- F
+        },
+        error = function(e) e
+        )
+        break
+      }
+      reportDetails <- rbindlist(lapply(fts$reportDetails, function(x) lapply(x, function(y) paste0(y, collapse = "; "))))
+      names(reportDetails) <- paste0("reportDetails_", names(reportDetails))
+      fts <- cbind(fts, reportDetails)
+      fts[, reportDetails := NULL]
+      fts[is.null(fts) | fts == "NULL"] <- NA
+      fwrite(fts, paste0(dataset_path, "/fts_", years[i], ".csv"))
+    }
+    message(paste0("Reading ", years[i]))
+    fts_list[[i]] <- fread(paste0(dataset_path, "/fts_", years[i], ".csv"), encoding = "UTF-8")
+  }
+  
+  fts <- rbindlist(fts_list, use.names = T, fill = T)
+  rm(fts_list)
+  
+  #Begin transformation
+  message("Curating data...")
+  
+  #Retain column order
+  col_order <- names(fts)
+  
+  #Remove flows which are outgoing on boundary
+  fts <- fts[boundary != "outgoing"]
+  
+  #Remove duplicates which have a shared boundary, and preserve 'incoming' over 'internal' on boundary type
+  shared <- rbind(fts[onBoundary == "shared" & boundary == "incoming", .SD[1], by = id], fts[onBoundary == "shared" & boundary == "internal" & !(id %in% fts[onBoundary == "shared" & boundary == "incoming", .SD[1], by = id]$id), .SD[1], by = id])
+  fts <- rbind(fts[onBoundary != "shared"], shared)
+  
+  #Split rows into individual years by destination usage year where multiple are recorded 
+  fts[, year := destinationObjects_UsageYear.name]
+  fts[, multiyear := grepl(";", destinationObjects_UsageYear.name)]
+  fts <- fts_split_rows(fts, value.cols = "amountUSD", split.col = "year", split.pattern = "; ", remove.unsplit = T)
+  
+  #Set multi-country flows to 'multi-destination_org_country' in destination_org_country column
+  isos <- fread("reference_datasets/isos.csv", encoding = "UTF-8", showProgress = F)
+  fts <- merge(fts, isos[, .(countryname_fts, destination_org_iso3 = iso3)], by.x = "destinationObjects_Location.name", by.y = "countryname_fts", all.x = T, sort = F)
+  fts[, destination_org_country := destinationObjects_Location.name]
+  fts[grepl(";", destination_org_country), `:=` (destination_org_country = "Multi-destination_org_country", destination_org_iso3 = "MULTI")]
+  
+  #Deflate by source location and destination year
+  fts_orgs <- data.table(fromJSON("https://api.hpc.tools/v1/public/organization")$data)
+  fts_locs <- data.table(fromJSON("https://api.hpc.tools/v1/public/location")$data)
+  fts_orgs[, `:=` (source_org_type = ifelse(is.null(categories[[1]]$name), NA, categories[[1]]$name), source_org_country = ifelse(is.null(locations[[1]]$name), NA, locations[[1]]$name), source_org_country_id = ifelse(is.null(locations[[1]]$id), NA, locations[[1]]$id)), by = id]
+  fts_orgs <- merge(fts_orgs, fts_locs[, .(id, iso3)], by.x = "source_org_country_id", by.y = "id", all.x = T, sort = F)
+  fts_orgs <- fts_orgs[, .(sourceObjects_Organization.id = as.character(id), source_org_country, source_org_iso3 = iso3, FTS_source_orgtype = source_org_type)]
+  fts <- merge(fts, fts_orgs, by = "sourceObjects_Organization.id", all.x = T, sort = F)
+  
+  #Deflate
+  deflators <- get_deflators(base_year = base_year, currency = "USD", weo_ver = weo_ver, approximate_missing = T)
+  deflators <- deflators[, .(source_org_iso3 = ISO, year = as.character(year), deflator = gdp_defl)]
+  
+  fts <- merge(fts, deflators, by = c("source_org_iso3", "year"), all.x = T, sort = F)
+  fts[is.na(deflator)]$deflator <- merge(fts[is.na(deflator)][, -"deflator"], deflators[source_org_iso3 == "DAC"], by = "year", all.x = T, sort = F)$deflator
+  fts[, `:=` (amountUSD_defl = amountUSD/deflator, amountUSD_defl_millions = (amountUSD/deflator)/1000000)]
+  
+  #Reorder columns nicely
+  col_order <- union(col_order, names(fts)[order(names(fts))])
+  fts <- fts[, col_order, with = F]
+
+  return(fts)
+}
+
+```
+
+</details>
 
 The final bit of code relating to the FTS data creates as ‘master’ dataset of all the extracted FTS data across all years in this guide’s case for further analysis:
 
-\[Add code for 05\_fts\_curated\_master.R\]
+<details>
+
+<summary>05_fts_curated_master.R</summary>
+
+```R
+list.of.packages <- c("tidyverse")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+suppressPackageStartupMessages(lapply(list.of.packages, require, character.only=T))
+
+getCurrentFileLocation <-  function()
+{
+  this_file <- commandArgs() %>% 
+    tibble::enframe(name = NULL) %>%
+    tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
+    dplyr::filter(key == "--file") %>%
+    dplyr::pull(value)
+  if (length(this_file)==0)
+  {
+    this_file <- rstudioapi::getSourceEditorContext()$path
+  }
+  return(dirname(this_file))
+}
+
+setwd(getCurrentFileLocation())
+source("04_fts_curated_flows.R")
+setwd("..")
+
+fts_save_master <- function(years = 2017:2024, update_years = NA, path = "fts/"){
+  fts_all <- fts_curated_flows(years, update_years = update_years)
+  for(i in 1:length(years)){
+    fwrite(fts_all[year == years[[i]]], paste0(path, "fts_curated_", years[[i]], ".csv"))
+  }
+}
+
+fts_save_master()
+
+```
+
+</details>
 
 ## Projects module
 
@@ -142,7 +504,163 @@ The [Projects module](https://projects.hpc.tools/) by UN OCHA is part of the Hum
 
 It is important to recognise that this data reflects the planning stage and may not be updated retrospectively if project aspects change during the implementation. [Below](#heading=h.hmsi8ftbjsat), we will combine it with FTS data on funding flows to be able to identify how much funding went to projects that planned for the delivery of CVA.
 
-\[Add code: 06\_fetch\_projects.R\]
+<details>
+
+<summary>06_fetch_projects.R</summary>
+
+```R
+list.of.packages <- c("data.table", "jsonlite","tidyverse", "httr")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+suppressPackageStartupMessages(lapply(list.of.packages, require, character.only=T))
+
+getCurrentFileLocation <-  function()
+{
+  this_file <- commandArgs() %>% 
+    tibble::enframe(name = NULL) %>%
+    tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
+    dplyr::filter(key == "--file") %>%
+    dplyr::pull(value)
+  if (length(this_file)==0)
+  {
+    this_file <- rstudioapi::getSourceEditorContext()$path
+  }
+  return(dirname(this_file))
+}
+
+setwd(getCurrentFileLocation())
+setwd("..")
+
+if(!dir.exists("projects")){
+  dir.create("projects")
+}
+
+for(year in c(2017:2024)){
+    message(year)
+    if(!file.exists(paste0("projects/project_data_",year,".RData"))){
+      base_path <- "fts/"
+      filename = paste0(base_path, "fts_curated_", year, ".csv")
+      fts <- fread(filename)
+      
+      unique_project_ids <- unique(fts$destinationObjects_Project.id)
+      unique_project_ids <- unique_project_ids[complete.cases(unique_project_ids)]
+      
+      base_url = "https://api.hpc.tools/v2/public/project/"
+      
+      project_list <- list()
+      project_index <- 1
+      pb <- txtProgressBar(max = length(unique_project_ids), style = 3)
+      for (i in 1: length(unique_project_ids)) {
+        setTxtProgressBar(pb, i)
+        project_id <- unique_project_ids[i]
+        if(project_id == ""){
+          next
+        }
+        project_url <- paste0(base_url, project_id)
+        project_json <- fromJSON(project_url, simplifyVector = FALSE)
+        
+        
+        
+        project = project_json$data$projectVersion
+        project_objective = ""
+        if(!is.null(project$objective)){
+          project_objective = project$objective
+        }
+        global_clusters_json = project$globalClusters
+        global_clusters = c()
+        for(global_cluster in global_clusters_json){
+          global_clusters = c(global_clusters, global_cluster$name)
+        }
+        global_clusters_string = paste0(global_clusters, collapse=" | ")
+        organisation_json = project$organizations
+        organisation_ids = c()
+        organisation_names = c()
+        for(organisation in organisation_json){
+          organisation_ids = c(organisation_ids, organisation$id)
+          organisation_names = c(organisation_names, organisation$name)
+        }
+        organisation_ids_string = paste0(organisation_ids, collapse=" | ")
+        organisation_names_string = paste0(organisation_names, collapse=" | ")
+        field_definitions = list()
+        for(def in project$plans[[1]]$conditionFields){
+          field_definitions[[as.character(def$id)]] = def
+        }
+        
+        field_values = project$projectVersionPlans[[1]]$projectVersionFields
+        field_value_length = length(field_values)
+        field_value_errors = 0
+        if(field_value_length == 0){
+          project_df = data.frame(
+            "project_id" = project_id,
+            "project_name" = project$name,
+            "project_objective" = project_objective,
+            "project_year" = year,
+            "currently_requested_funds" = project$currentRequestedFunds,
+            "plan_id" = project$plans[[1]]$planVersion$id,
+            "plan_name" = project$plans[[1]]$planVersion$name,
+            "global_clusters" = global_clusters_string,
+            "organisation_ids" = organisation_ids_string,
+            "organisation_names" = organisation_names_string,
+            "question" = "No field questions",
+            "answer" = "No field answers"
+          )
+          project_list[[project_index]] = project_df
+          project_index = project_index + 1
+        } else {
+          for(field in field_values){
+            def = field_definitions[[as.character(field$conditionFieldId)]]
+            if(!is.null(def) & !is.null(field$value)){
+              project_df = data.frame(
+                "project_id" = project_id,
+                "project_name" = project$name,
+                "project_objective" = project_objective,
+                "project_year" = year,
+                "currently_requested_funds" = project$currentRequestedFunds,
+                "plan_id" = project$plans[[1]]$planVersion$id,
+                "plan_name" = project$plans[[1]]$planVersion$name,
+                "global_clusters" = global_clusters_string,
+                "organisation_ids" = organisation_ids_string,
+                "organisation_names" = organisation_names_string,
+                "question" = def$name,
+                "answer" = field$value
+              )
+              project_list[[project_index]] = project_df
+              project_index = project_index + 1
+            } else {
+              field_value_errors = field_value_errors + 1
+            }
+          }
+        }
+        # Non-zero length, but all of the fields are incorrectly referenced
+        if(field_value_errors == field_value_length){
+          project_df = data.frame(
+            "project_id" = project_id,
+            "project_name" = project$name,
+            "project_objective" = project_objective,
+            "project_year" = year,
+            "currently_requested_funds" = project$currentRequestedFunds,
+            "plan_id" = project$plans[[1]]$planVersion$id,
+            "plan_name" = project$plans[[1]]$planVersion$name,
+            "global_clusters" = global_clusters_string,
+            "organisation_ids" = organisation_ids_string,
+            "organisation_names" = organisation_names_string,
+            "question" = "No field questions",
+            "answer" = "No field answers"
+          )
+          project_list[[project_index]] = project_df
+          project_index = project_index + 1
+        }
+      }
+      
+      close(pb)
+      all_projects <- rbindlist(project_list)
+      save(all_projects, file=paste0("projects/project_data_",year,".RData"))
+    }
+}
+
+```
+
+</details>
 
 ## International Aid Transparency Initiative
 
@@ -165,17 +683,17 @@ The easiest way to access and check this data would be through the [IATI datasto
 
 Running this search would yield all IATI activities where publishers have included either the CVA aid type as flag for the activity or a CVA aid type as characteristic of any transaction related to that activity.
 
-## WFP CASHboard Analytics {#wfp-cashboard-analytics}
+## WFP CASHboard Analytics
 
 The World Food Programme (WFP) maintains its own online dashboard of what it describes as ‘cash-based transfers and commodity vouchers’ with data on WFP’s CVA operations from 2018 to, at the time of writing, 2024\. This crucially includes a breakdown of data by country, which is not evident from the global CVA data collected from WFP (and all other CALP Network members) via survey. It can therefore be useful to incorporate for analysis disaggregated by country, but is not currently used in the global calculation of humanitarian CVA volumes.
 
 The [WFP CASHboard](https://unwfp.maps.arcgis.com/apps/dashboards/5e403a8944104b328117c67ae4afa11e) data can be extracted through the following lines of code:
 
-\[Add code:  
+```R
 library(jsonlite)  
-json\_response \= fromJSON("https://services3.arcgis.com/t6lYS2Pmd8iVx1fy/arcgis/rest/services/global\_CBT\_operations\_by\_country/FeatureServer/4/query?f=json\&where=1%3D1\&returnGeometry=false\&spatialRel=esriSpatialRelIntersects\&outFields=\*\&orderByFields=OBJECTID%20ASC\&resultOffset=0\&resultRecordCount=1000\&cacheHint=true\&quantizationParameters=%7B%22mode%22%3A%22edit%22%7D")  
-wfp\_cash\_map\_data \= json\_response$features$attributes  
-\]
+json_response = fromJSON("https://services3.arcgis.com/t6lYS2Pmd8iVx1fy/arcgis/rest/services/global_CBT_operations_by_country/FeatureServer/4/query?f=json&where=1%3D1&returnGeometry=false&spatialRel=esriSpatialRelIntersects&outFields=*&orderByFields=OBJECTID%20ASC&resultOffset=0&resultRecordCount=1000&cacheHint=true&quantizationParameters=%7B%22mode%22%3A%22edit%22%7D")  
+wfp_cash_map_data = json_response$features$attributes
+```
 
 ## Supplementary data
 
@@ -187,9 +705,102 @@ All currency units tend to be converted to US$ to have a uniform currency across
 
 If following that approach, the exchanges used in different years to convert different currencies into US$ would be primarily sourced from the OECD DAC, and supplemented by the IMF and World Bank for currencies missing from the OECD DAC, as executed by the following code chunk:
 
-\[Add code on exchange rates\]
+<details>
 
-### Deflators {#deflators}
+<summary>util_exchange_rates.R</summary>
+
+```R
+list.of.packages <- c("data.table", "jsonlite", "devtools", "dplyr")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+suppressPackageStartupMessages(lapply(list.of.packages, require, character.only=T))
+devtools::install_github("christophergandrud/imfr")
+library(imfr)
+
+getCurrentFileLocation <-  function()
+{
+  this_file <- commandArgs() %>% 
+    tibble::enframe(name = NULL) %>%
+    tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
+    dplyr::filter(key == "--file") %>%
+    dplyr::pull(value)
+  if (length(this_file)==0)
+  {
+    this_file <- rstudioapi::getSourceEditorContext()$path
+  }
+  return(dirname(this_file))
+}
+
+setwd(getCurrentFileLocation())
+source("util_oecd_sdmx.R")
+setwd("..")
+
+years <- 1950:2025
+
+isos <- fread("reference_datasets/isos.csv", encoding = "UTF-8", na.strings = "")
+
+all_ex <- data.table(expand.grid(iso3 = c(isos$iso3, "EUI"), year = years))
+
+##OECD
+if(!file.exists("reference_datasets/oecd_ex.csv")){
+  oecd_ex = OECD("https://sdmx.oecd.org/public/rest/data/OECD.SDD.NAD,DSD_NAMAIN10@DF_TABLE4,/A....EXC_A.......?startPeriod=1950&dimensionAtObservation=AllDimensions")
+  fwrite(oecd_ex, "reference_datasets/oecd_ex.csv")
+}else{
+  oecd_ex = fread("reference_datasets/oecd_ex.csv")
+}
+# setdiff(unique(oecd_ex$`Reference area`), isos$countryname_oecd)
+# setdiff(isos$countryname_oecd, unique(oecd_ex$`Reference area`))
+oecd_ex <- merge(isos[, .(countryname_oecd, iso3)], oecd_ex, by.x = "countryname_oecd", by.y = "Reference area", all.y = T)
+
+{oecd_ex[countryname_oecd == "Euro area (20 countries)", iso3 := "EUI"]
+oecd_ex[countryname_oecd == "European Union (27 countries from 01/02/2020)", iso3 := "EUI"]
+oecd_ex[countryname_oecd == "Hong Kong (China)", iso3 := "HKG"]
+oecd_ex[countryname_oecd == "Russia", iso3 := "RUS"]
+oecd_ex[countryname_oecd == "Slovak Republic", iso3 := "SVK"]
+oecd_ex[countryname_oecd == "Czechia", iso3 := "CZE"]}
+oecd_ex$variable = year(oecd_ex$`Time period`)
+
+oecd_ex <- oecd_ex[!is.na(value) & value != 0]
+
+##WORLD BANK
+if(!file.exists("reference_datasets/wb_ex.csv")){
+  wb_ex <- data.table(fromJSON("https://api.worldbank.org/v2/country/all/indicator/PA.NUS.ATLS?date=1950:2025&format=json&per_page=20000")[[2]])
+  fwrite(wb_ex, "reference_datasets/wb_ex.csv")
+}else{
+  wb_ex = fread("reference_datasets/wb_ex.csv")
+}
+wb_ex <- wb_ex[, .(iso3 = countryiso3code, variable = date, value = value)]
+
+wb_ex <- wb_ex[!is.na(value) & (!(paste0(iso3, variable) %in% oecd_ex[, paste0(iso3, variable)]))]
+
+##IFS
+if(!file.exists("reference_datasets/ifs.csv")){
+  imf_app_name("calp-cva")
+  params = imf_parameters("IFS")
+  ifs_ex <- data.table(imf_dataset(database_id="IFS", indicator="ENDA_XDC_USD_RATE", freq="A"))
+  fwrite(ifs_ex, "reference_datasets/ifs.csv")
+}else{
+  ifs_ex = fread("reference_datasets/ifs.csv")
+}
+
+setnames(ifs_ex, c("ref_area", "value", "date"), c("iso2c","ENDA_XDC_USD_RATE", "year"))
+ifs_ex <- merge(isos[, .(iso3, iso2)], ifs_ex[!is.na(`ENDA_XDC_USD_RATE`)], by.x= "iso2", by.y = "iso2c", all = T)[, .(iso3, variable = year, value = `ENDA_XDC_USD_RATE`)]
+ifs_ex = ifs_ex[!is.na(iso3) & !is.na(variable) & !is.na(value)]
+ifs_ex <- ifs_ex[!is.na(value) & !(paste0(iso3, variable) %in% c(oecd_ex[, paste0(iso3, variable)], wb_ex[, paste0(iso3, variable)]))]
+
+##All
+oecd_ex = oecd_ex[,c("iso3", "variable", "value")]
+all_wd_ex <- rbind(oecd_ex, wb_ex, ifs_ex)[, .(iso3, year = variable, value = value)]
+
+all_ex <- merge(all_ex, all_wd_ex, all.x = T)
+
+fwrite(all_ex, "reference_datasets/usd_exchange_rates.csv")
+
+```
+
+</details>
+
+### Deflators
 
 Currently, the global volumes of humanitarian CVA are presented in current prices, i.e., without adjusting for inflation/rising costs. The main reasons for this are that it would be a slightly arbitrary choice of which set of deflators to use for the implementing agencies’ data (the price level in donor countries or in recipient locations (if known)?) and that adjusting for inflation would require manipulating the implementers’ data so that they potentially do not recognise themselves in the trend anymore.
 
@@ -198,13 +809,202 @@ However, this means that the increase in global volumes of humanitarian CVA is l
 For time-series analysis of financial data over a long time period, it can make sense to adjust financial data in each year for inflation to have better comparability over time. For example, in current prices, the total bilateral official development assistance from OECD DAC countries increased by 324% between 2002 and 2022, but when adjusting for inflation by deflating both to constant 2022 prices, this changes to an increase by only 189%.
 
 Deflators are mostly relevant for this guide as consideration for future methodological adjustments ([see below](#suggestions-for-future-improvements)) and for calculating CVA as % of IHA, the latter previously calculated by DI in constant prices ([see below](#relative-share-of-cva-as-%-of-iha)). The following code chunk calculates the deflators by donor, which are required to change the IHA figures back to current prices so that they are more comparable with the CVA figures:  
-\[Add code 03\_deflators.R\]
+
+<details>
+
+<summary>03_deflators.R</summary>
+
+```R
+get_deflators <- function(base_year = 2021, currency = "USD", weo_ver = NULL, approximate_missing = T){
+  suppressPackageStartupMessages(lapply(c("data.table", "httr", "jsonlite","lubridate"), require, character.only=T))
+  
+  if(!dir.exists("weo")){
+    dir.create("weo")
+  }
+  
+  if(is.null(weo_ver)){
+    
+    tyear <- year(Sys.Date())
+    tmonth <- month(Sys.Date())
+    
+    weo_month <- ifelse(tmonth <= 10 & tmonth >= 4, 4, 10)
+    weo_year <- ifelse(tmonth < 4, tyear-1, tyear)
+    
+    weo_ver <- format(as.Date(paste("1", weo_month, weo_year, sep = "-"), "%d-%m-%Y"), "%b%Y")
+  }
+  
+  ##WEO data
+  pweo_ver <- as.Date(paste0("1", weo_ver), "%d%b%Y")
+  weo_year <- year(pweo_ver)
+  weo_month <- month(pweo_ver)
+  weo_month_text <- as.character(lubridate::month(pweo_ver,label = TRUE, abbr = FALSE))
+  weo_filename = paste0("weo/",weo_ver ,"all.xls")
+  if(!file.exists(weo_filename)){
+    while(T){
+      url <- paste0("https://www.imf.org/-/media/Files/Publications/WEO/WEO-Database/", weo_year,"/",weo_month_text, "/WEO", weo_ver ,"all.ashx")
+      response <- GET(url)
+      if(response$headers$`content-type` == "application/vnd.ms-excel") break
+      
+      if(weo_month <= 10 & weo_month > 4){
+        weo_month <- 4
+      } else {
+        if(weo_month <= 4){
+          weo_year <- weo_year - 1
+        }
+        weo_month <- 10
+      }
+      weo_ver <- format(as.Date(paste("1", weo_month, weo_year, sep = "-"), "%d-%m-%Y"), "%b%Y")
+    }
+    download.file(url, destfile=weo_filename)
+  }
+  
+  message("Using IMF WEO version ", weo_ver, ".")
+  
+  weo <- read.delim(weo_filename,sep="\t",na.strings=c("","n/a","--"),check.names=F, fileEncoding="utf-16")
+  weo = data.table(weo)
+  country_codes <- unique(weo[, .(ISO, Country)])
+  country_codes = country_codes[complete.cases(country_codes),]
+  
+  data_cols <- c("ISO", "WEO Subject Code", grep("^\\d{4}$", names(weo), value = T))
+  
+  weo <- melt(weo[, ..data_cols], id.vars = c("ISO", "WEO Subject Code"), variable.factor = F)
+  weo[, value := as.numeric(gsub(",", "", value))]
+  
+  #Fix PSE ISO code
+  weo[ISO == "WBG", ISO := "PSE"]
+  
+  #GDP in current prices
+  if(currency == "USD"){
+    weo_gdp_cur <- weo[`WEO Subject Code` == "NGDPD"]
+  }
+  if(currency == "LCU"){
+    weo_gdp_cur <- weo[`WEO Subject Code` == "NGDP"]
+  }
+  if(currency == "PPP"){
+    weo_gdp_cur <- weo[`WEO Subject Code` == "PPPGDP"]
+  }
+  
+  weo_gdp_cur <- weo_gdp_cur[, .(ISO, variable, gdp_cur = value)]
+  
+  #GDP real growth rates
+  weo_gdp_pcg <- weo[`WEO Subject Code` == "NGDP_RPCH"]
+  
+  #GDP cumulative growth rates
+  weo_gdp_pcg <- weo_gdp_pcg[, gdp_cg := 1+ifelse(is.na(value), 0, value/100), by = ISO]
+  weo_gdp_pcg[, gdp_cg := ifelse(!(!is.na(value) | !is.na(shift(value, -1))), NA, cumprod(gdp_cg)), by = ISO]
+  weo_gdp_pcg[, gdp_cg := gdp_cg/gdp_cg[variable == base_year], by = ISO][, value := NULL]
+  
+  #GDP in constant prices
+  weo_gdp_con <- merge(weo_gdp_pcg[, .(ISO, variable, gdp_cg)], weo_gdp_cur)
+  weo_gdp_con[, `:=` (gdp_con = gdp_cg*gdp_cur[variable == base_year]), by= ISO]
+  
+  #GDP deflators from WEO
+  weo_deflators <- weo_gdp_con[, .(gdp_defl = gdp_cur/gdp_con), by = .(ISO, variable)]
+  weo_deflators <- cbind(weo_deflators, source = "WEO", ver = weo_ver)
+  
+  #Calculate Total DAC
+  oecd_dac_iso3 <- c(
+    "AUS", # Australia
+    "AUT", # Austria
+    "BEL", # Belgium
+    "CAN", # Canada
+    "CZE", # Czech Republic
+    "DNK", # Denmark
+    "EST", # Estonia
+    "FIN", # Finland
+    "FRA", # France
+    "DEU", # Germany
+    "GRC", # Greece
+    "HUN", # Hungary
+    "ISL", # Iceland
+    "IRL", # Ireland
+    "ITA", # Italy
+    "JPN", # Japan
+    "KOR", # South Korea
+    "LTU", # Lithuania
+    "LUX", # Luxembourg
+    "NLD", # Netherlands
+    "NZL", # New Zealand
+    "NOR", # Norway
+    "POL", # Poland
+    "PRT", # Portugal
+    "SVK", # Slovakia
+    "SVN", # Slovenia
+    "ESP", # Spain
+    "SWE", # Sweden
+    "CHE", # Switzerland
+    "GBR", # United Kingdom
+    "USA"  # United States
+  )
+  weo_gdp_con_dac <- weo_gdp_con[ISO %in% oecd_dac_iso3]
+  weo_totaldac_defl <- weo_gdp_con_dac[, .(ISO = "DAC", gdp_defl = sum(gdp_cur, na.rm = T)/sum(gdp_con, na.rm = T), source = "WEO", ver = weo_ver), by = .(variable)]
+  
+  weo_deflators <- rbind(weo_deflators, weo_totaldac_defl)
+  
+  deflators <- weo_deflators
+
+  deflators[, variable := as.numeric(variable)]
+  
+  #GBR copies
+  GBR_copies <- c("AIA", "MSR", "SHN")
+  deflators <- rbind(deflators[!(ISO %in% GBR_copies)], rbindlist(lapply(GBR_copies, function(x) copy(deflators)[ISO == "GBR"][, ISO := x])))
+  
+  #NZL copies
+  NZL_copies <- c("COK", "NIU", "TKL")
+  deflators <- rbind(deflators[!(ISO %in% NZL_copies)], rbindlist(lapply(NZL_copies, function(x) copy(deflators)[ISO == "NZL"][, ISO := x])))
+  
+  #FRA copies
+  FRA_copies <- c("WLF")
+  deflators <- rbind(deflators[!(ISO %in% FRA_copies)], rbindlist(lapply(FRA_copies, function(x) copy(deflators)[ISO == "FRA"][, ISO := x])))
+  
+  #DAC copies
+  if("DAC" %in% deflators$ISO){
+    DAC_copies <- c("CUB", "PRK", "SYR")
+    deflators <- rbind(deflators[!(ISO %in% DAC_copies)], rbindlist(lapply(DAC_copies, function(x) copy(deflators)[ISO == "DAC"][, ISO := x])))
+  }
+  
+  ##Approximate missing
+  if(approximate_missing){
+    missing <- deflators[, .SD[any(is.na(gdp_defl))], by = ISO]
+    missing_weo_gdp <- weo_gdp_con[ISO %in% missing$ISO]
+    missing_weo_gdp[, variable := as.numeric(variable)]
+    missing_weo_gr <- suppressWarnings(missing_weo_gdp[, .(gdp_avg_curg = (gdp_cur[!is.na(gdp_cur) & variable == max(variable[!is.na(gdp_cur)])]/gdp_cur[!is.na(gdp_cur) & variable == min(variable[!is.na(gdp_cur)])])^(1/(max(variable[!is.na(gdp_cur)])-min(variable[!is.na(gdp_cur)]))),
+                        gdp_avg_cong = (gdp_con[!is.na(gdp_con) & variable == max(variable[!is.na(gdp_con)])]/gdp_con[!is.na(gdp_con) & variable == min(variable[!is.na(gdp_con)])])^(1/(max(variable[!is.na(gdp_con)])-min(variable[!is.na(gdp_con)]))))
+                    , by = ISO])
+    missing_weo_gr <- missing_weo_gr[, .(defg = gdp_avg_curg/gdp_avg_cong), by = ISO]
+  
+    missing_defl <- merge(deflators[ISO %in% missing$ISO], missing_weo_gr, by = "ISO")
+    
+    missing_defl_f <- suppressWarnings(missing_defl[, .SD[is.na(gdp_defl) & variable > max(variable[!is.na(gdp_defl)])], by = ISO])
+    missing_defl_b <- suppressWarnings(missing_defl[, .SD[is.na(gdp_defl) & variable < min(variable[!is.na(gdp_defl)])], by = ISO])
+    
+    missing_defl_b[, defg := rev(cumprod(1/defg)), by = ISO]
+    missing_defl_f[, defg := cumprod(defg), by = ISO]
+    
+    missing_defl_b <- suppressWarnings(merge(missing_defl_b[, -"gdp_defl"], missing_defl[ISO %in% missing_defl_b$ISO, .SD[variable == min(variable[!is.na(gdp_defl)])], by = ISO][, .(ISO, gdp_defl)], by = "ISO"))
+    missing_defl_f <- suppressWarnings(merge(missing_defl_f[, -"gdp_defl"], missing_defl[ISO %in% missing_defl_f$ISO, .SD[variable == max(variable[!is.na(gdp_defl)])], by = ISO][, .(ISO, gdp_defl)], by = "ISO"))
+    
+    missing_defl <- rbind(missing_defl_b[, `:=` (gdp_defl = gdp_defl*defg, defg = NULL)], missing_defl_f[, `:=` (gdp_defl = gdp_defl*defg, defg = NULL)])
+    
+    missing_defl[, `:=` (source = paste0(source, "_est"))]
+    
+    deflators <- rbind(deflators[!(paste0(ISO, variable) %in% paste0(missing_defl$ISO, missing_defl$variable))], missing_defl)
+  }
+  
+  #Final out
+  deflators <- deflators[, .(ISO, year = variable, base_year, currency, source, ver, gdp_defl)][order(ISO, year)]
+  return(deflators)
+}
+
+```
+
+</details>
 
 # Parsing CVA data
 
 Following the procurement of the required source data in the previous steps of this guide, this section lays out how to isolate the data relevant to CVA from those datasets.
 
-## Projects module CVA fields {#projects-module-cva-fields}
+## Projects module CVA fields
 
 First, the relevant CVA fields from the projects module need to be identified so that the CVA information on those projects can be merged with the FTS funding data, given the projects module at this stage only represents planning figures.
 
@@ -212,7 +1012,180 @@ Former DI staff already went through all the unique project questions from all r
 
 The following script processes the project data fetched from the projects API by merging project data from multiple years, identifying projects related to CVA based on relevant questions, and standardizes the answers for further analysis:
 
-\[Add code 07\_process\_project\_data.R\]
+<details>
+
+<summary>07_process_project_data.R</summary>
+
+```R
+list.of.packages <- c("data.table", "jsonlite","tidyverse", "httr")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+suppressPackageStartupMessages(lapply(list.of.packages, require, character.only=T))
+
+getCurrentFileLocation <-  function()
+{
+  this_file <- commandArgs() %>% 
+    tibble::enframe(name = NULL) %>%
+    tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
+    dplyr::filter(key == "--file") %>%
+    dplyr::pull(value)
+  if (length(this_file)==0)
+  {
+    this_file <- rstudioapi::getSourceEditorContext()$path
+  }
+  return(dirname(this_file))
+}
+
+setwd(getCurrentFileLocation())
+setwd("..")
+
+# Load and merge project-level data
+project_list = list()
+project_index = 1
+for(year in 2017:2024){
+  message(year)
+  load(paste0("projects/project_data_",year,".RData"))
+  project_list[[project_index]] = all_projects
+  project_index = project_index + 1
+}
+
+all_projects <- rbindlist(
+  project_list
+)
+questions <- unique(all_projects$question)
+if(!dir.exists("output")){
+  dir.create("output")
+}
+write.csv(questions, "output/questions.csv", fileEncoding = "UTF-8", row.names = FALSE, quote = TRUE)
+
+# Search for cash questions
+cash.noncase.keywords <- c(
+  "cash",
+  "voucher",
+  "vouchers",
+  "cash transfer",
+  "cash grant", 
+  "unconditional cash",
+  "money",
+  "conditional cash transfer",
+  "argent",
+  "monetaires",
+  "bons",
+  "espèces",
+  "monnaie",
+  "monétaires",
+  "tokens",
+  "coupons",
+  "cupones",
+  "transfert monétaire",
+  "transfer monétaire",
+  "transferencias monetarias",
+  "public works programme",
+  "social assistance",
+  "social safety net",
+  "social transfer",
+  "social protection",
+  "CVA",
+  "CCT",
+  "UCT",
+  "CTP",
+  "CFW",
+  "CFA",
+  "SSN",
+  "ESSN",
+  "MPC",
+  "MPCT")
+
+cash.noncase.keywords = paste0(
+  "\\b",
+  paste(cash.noncase.keywords, collapse="\\b|\\b"),
+  "\\b"
+)
+potential_cash_questions <- questions[grepl(cash.noncase.keywords, questions, ignore.case=T)]
+
+# Load pre-labeled
+questions_labeled = fread("reference_datasets/cva_project_questions.csv")
+new_potential_cash_questions = setdiff(potential_cash_questions, questions_labeled$Question)
+if(length(new_potential_cash_questions) > 0){
+  write.csv(questions, "output/potential_new_cash_questions.csv", fileEncoding = "UTF-8", row.names = FALSE, quote = TRUE)
+}
+
+quant_labeled_questions = subset(questions_labeled, `Question type` %in% c("quantC", "quantV"))$Question
+flag_labeled_questions = subset(questions_labeled, `Question type` == "flagCVA")$Question
+
+quant_cash_projects <- subset(all_projects, question %in% quant_labeled_questions)
+boolean_cash_projects = subset(all_projects, question %in% flag_labeled_questions)
+
+pattern <- "\\d+\\.\\d+|\\d+%|\\d+"
+quant_cash_projects <- quant_cash_projects[grepl(pattern, answer)]
+
+# Standardize answers
+standardize_percentage <- function(x) {
+  x <- trimws(tolower(x))
+  if (grepl("%", x)) {
+    num <- gsub(".*?(\\d+(\\.\\d+)?%).*", "\\1", x)  
+    num <- gsub("%", "", num)  
+  } else if (grepl("less than 1", x)) {
+    num <- "0"
+  } else if (grepl("percent", x)) {
+    num <- gsub(".*?(\\d+(\\.\\d+)? percent).*", "\\1", x)  
+    num <- gsub("percent", "", num)  
+  } else if (grepl("^[0-9]+(\\.[0-9]+)?$", x)) {
+    num <- x
+  } else {
+    num <- gsub(".*?(\\d+(\\.\\d+)?%).*", "\\1", x)  
+    if (num == "") {
+      num <- NA
+    } else {
+      num <- gsub("%", "", num)  
+    }
+  }
+    num <- gsub("[^0-9.]", "", num)
+    num <- as.numeric(num)
+    return(num)
+}
+quant_cash_projects <- quant_cash_projects[, standardized_percentage := sapply(answer, standardize_percentage)]
+
+quant_cash_projects = quant_cash_projects[,.(cva_percentage = sum(standardized_percentage)), by=.(project_id)]
+quant_cash_projects$cva_percentage[which(quant_cash_projects$cva_percentage > 100)] = 100
+quant_cash_projects$cva_percentage = quant_cash_projects$cva_percentage / 100
+
+standardize_boolean = function(x){
+  if(tolower(x) %in% c("true", "qui", "yes")){
+    return(T)
+  }
+  return(F)
+}
+
+boolean_cash_projects$boolean_answer = sapply(boolean_cash_projects$answer, standardize_boolean)
+
+boolean_cash_projects = boolean_cash_projects[,.(cva=max(boolean_answer)==1), by=.(project_id)]
+
+# Find and fix overlaps
+zero_percents = subset(quant_cash_projects, cva_percentage == 0)
+zero_to_bool = data.table(project_id = zero_percents$project_id, cva=F)
+new_zero_ids = setdiff(zero_to_bool$project_id, boolean_cash_projects$project_id)
+zero_to_bool = subset(zero_to_bool, project_id %in% new_zero_ids)
+boolean_cash_projects = rbind(boolean_cash_projects, zero_to_bool)
+
+false_bools = subset(boolean_cash_projects, !cva)
+bool_to_zero = data.table(project_id = false_bools$project_id, cva_percentage=0)
+new_bool_ids = setdiff(bool_to_zero$project_id, quant_cash_projects$project_id)
+bool_to_zero = subset(bool_to_zero, project_id %in% new_bool_ids)
+quant_cash_projects = rbind(quant_cash_projects, bool_to_zero)
+
+cash_bool_and_percentage = merge(quant_cash_projects, boolean_cash_projects, all=T)
+cash_bool_and_percentage$cva[which(cash_bool_and_percentage$cva_percentage > 0)] = T
+cash_bool_and_percentage$cva[which(cash_bool_and_percentage$cva_percentage==0)] = F
+
+fwrite(cash_bool_and_percentage, "projects/cash_projects.csv")
+
+project_text = unique(all_projects[,c("project_id", "project_name", "project_objective")])
+fwrite(project_text, "projects/project_text.csv")
+
+```
+
+</details>
 
 ## Combining FTS and projects module CVA data
 
@@ -222,7 +1195,65 @@ We also import the project text for projects that received funding on FTS and co
 
 The following code reads in the FTS and the project data, merges the CVA project budget percentages by project ID and combines project text fields:
 
-\[Add code from 08\_fts\_keyword\_searching\_cash.R lines 1 to 51\]
+<details>
+
+<summary>08_fts_keyword_searching_cash.R lines 1-51</summary>
+
+```R
+list.of.packages <- c("data.table", "jsonlite","tidyverse")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+suppressPackageStartupMessages(lapply(list.of.packages, require, character.only=T))
+
+getCurrentFileLocation <-  function()
+{
+  this_file <- commandArgs() %>% 
+    tibble::enframe(name = NULL) %>%
+    tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
+    dplyr::filter(key == "--file") %>%
+    dplyr::pull(value)
+  if (length(this_file)==0)
+  {
+    this_file <- rstudioapi::getSourceEditorContext()$path
+  }
+  return(dirname(this_file))
+}
+
+setwd(getCurrentFileLocation())
+setwd("..")
+
+##load in fts
+years <- 2017:2024
+fts_curated <- list()
+for (i in 1:length(years)){
+  year <- years[i]
+  fts_curated[[i]] <- fread(paste0("fts/fts_curated_",year,".csv"))
+  message(year)
+  
+}
+
+fts <- rbindlist(fts_curated, use.names=T)
+fts <- fts[as.character(year) >= 2017]
+
+# Load in project data
+project_metadata = fread("projects/cash_projects.csv")
+project_metadata$project_id = as.character(project_metadata$project_id)
+project_text = fread("projects/project_text.csv")
+project_text$text = paste(project_text$project_name, project_text$project_objective)
+project_text[,c("project_name", "project_objective")] = NULL
+project_data = merge(project_text, project_metadata, all=T)
+names(project_data) = c("destinationObjects_Project.id", "project_text", "project_cva_percentage", "project_cva")
+setdiff(unique(fts$destinationObjects_Project.id), unique(project_data$destinationObjects_Project.id))
+
+## Maybe add in keep function to have only required columns
+fts$destinationObjects_Project.id = as.character(fts$destinationObjects_Project.id)
+fts = merge(fts, project_data, by="destinationObjects_Project.id", all.x=T)
+
+fts$all_text = paste(fts$description, fts$project_text)
+
+```
+
+</details>
 
 ## Identifying CVA relevance of funding
 
@@ -244,23 +1275,222 @@ Otherwise, the categorisation into full/partial/none for the three categories wo
 
 The following code chunk executes this classification process with FTS flow data for steps 1 to 3:
 
-\[Add code from ‘08\_fts\_keyword\_searching\_cash.R’ line 52 to line 148\]
+<details>
 
-### Machine-learning to classify CVA flow descriptions {#machine-learning-to-classify-cva-flow-descriptions}
+<summary>08_fts_keyword_searching_cash.R lines 52-148</summary>
+
+```R
+
+#keywords are not case sensitive
+cash.noncase.keywords <- c(
+  "cash",
+  "voucher",
+  "cash transfer",
+  "cash grant", 
+  "unconditional cash",
+  "money",
+  "conditional cash transfer",
+  "argent",
+  "monetaires",
+  "bons",
+  "espèces",
+  "monnaie",
+  "monétaires",
+  "monétaire",
+  "tokens",
+  "coupons",
+  "cupones",
+  "public works programme",
+  "social assistance",
+  "social safety net",
+  "social transfer",
+  "social protection"
+)
+
+#acronyms are case-sensitive
+cash.acronyms <- c(
+  "CCT",
+  "UCT",
+  "CTP",
+  "CFW",
+  "CFA",
+  "SSN",
+  "ESSN",
+  "MPC",
+  "MPCT",
+  "CVA"
+)
+
+cash_regex = paste0(
+  "\\b",
+  paste(c(tolower(cash.noncase.keywords), tolower(cash.acronyms)), collapse="\\b|\\b"),
+  "\\b"
+)
+
+##Relevant clusters from cluster mapping
+cash_clusters <- c(
+  "Basic Needs / Multi-Purpose Cash",
+  "Cash à usage multiple",
+  "Multi Purpose Cash",
+  "Multi-cluster/Multi-Purpose Cash",
+  "Multi-Purpose Cash & Social Protection",
+  "Multipurpose Cash Assistance (MPC)",
+  "Multi-Purpose Cash Assistance (MPCA)",
+  "Multipurpose cash/ IDPs/ multisector",
+  "Multi-sector Cash/Social Protection COVID-19",
+  "Cash",
+  "Multi-purpose Cash",
+  "Multipurpose cash assistance",
+  "Multi-Purpose Cash Assistance",
+  "Multipurpose Cash Assistance COVID-19",
+  "Multi-Purpose Cash Assistance COVID-19",
+  "Multi-purpose Cash COVID-19",
+  "Multipurpose cash",
+  "Protection: Multi-Purpose Cash Assistance",
+  "Cash Transfer COVID-19"
+  )
+
+fts$sector_method_cluster_relevance <- "None"
+
+## Define relevance based on sector and/or method
+fts[method == "Cash transfer programming (CTP)", sector_method_cluster_relevance := "Full"]
+fts[destinationObjects_Cluster.name %in% cash_clusters, sector_method_cluster_relevance := "Full"]
+
+# Select partial sectors with cash cluster and
+fts[grepl(";", destinationObjects_Cluster.name) == T & grepl(paste0(cash_clusters, collapse = "|"), destinationObjects_Cluster.name), sector_method_cluster_relevance := "Partial"]
+
+#Count number of keywords appearing in description
+fts$keyword_match = grepl(cash_regex, fts$all_text, ignore.case=T)
+mean(fts$keyword_match > 0)
+##below checks where relevance is none and there are or are not keywords
+##second line below useful for identifying new keywords maybe missing
+View(fts[sector_method_cluster_relevance == "None" & keyword_match][,"all_text"])
+View(fts[sector_method_cluster_relevance != "None" & !keyword_match][,"all_text"])
+
+# Start with sector/method/cluster relevance
+fts$relevance = fts$sector_method_cluster_relevance
+fts$relevance_method = "Sector/Method/Cluster"
+
+# If percentage is greater than or equal to 0.75, mark full
+fts$relevance_method[which(fts$project_cva_percentage >= 0.75)] = "Project CVA Percentage"
+fts$relevance[which(fts$project_cva_percentage >= 0.75)] = "Full"
+
+# If percentage is greater than 0 but less than 0.75, mark partial
+fts$relevance_method[which(fts$project_cva_percentage > 0 & fts$project_cva_percentage < 0.75)] = "Project CVA Percentage"
+fts$relevance[which(fts$project_cva_percentage > 0 & fts$project_cva_percentage < 0.75)] = "Partial"
+
+```
+
+</details>
+
+### Machine-learning to classify CVA flow descriptions
 
 After applying the three above steps to classify the CVA relevance of FTS funding flows, this still leaves the possibility of identifying funding for CVA through unstructured text. The former DI team trained a machine-learning classifier on a manually classified dataset of several hundred FTS flows for their CVA relevance. This algorithm is then applied to text for FTS flows that either contain a keyword relevant to CVA in their flow or project text (the existing keyword list is in lines 52 to 76 and can be adapted as required) or those that represent funding to projects flagged as CVA in the projects data ([see above](#projects-module-cva-fields)), but without data on the planned budget share of CVA.
 
 The following code chunk compiles the relevant text data before we process that with the classifier:
 
-\[Add code from ‘08\_fts\_keyword\_searching\_cash.R’ line 149 to 157\]
+<details>
+
+<summary>08_fts_keyword_searching_cash.R lines 149-157</summary>
+
+```R
+
+# Save those that are either keyword match or marked at project level as CVA, but are None for ML
+to_inference = subset(fts, (keyword_match | project_cva) & relevance == "None")
+keep = c("id", "description")
+to_inference = unique(to_inference[,keep,with=F])
+setnames(to_inference, "description", "text")
+fwrite(to_inference, "classifier_code/fts_to_inference.csv")
+
+```
+
+</details>
 
 The CSV data from this code serves as input for the classifier, which is run in Python. The following script uses a pre-trained machine learning model to infer the relevance of FTS flows to CVA by processing the text descriptions of flows and predicts for their CVA relevance based on the model's classification:
 
-\[Add code from flow\_inference.py\]
+<details>
+
+<summary>classifier_code/flow_inference.py</summary>
+
+```python
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+import torch
+from datasets import load_dataset
+from scipy.special import softmax
+
+card = "alex-miller/cva-flow-weighted-classifier2"
+tokenizer = AutoTokenizer.from_pretrained(card)
+model = AutoModelForSequenceClassification.from_pretrained(card)
+
+
+def inference(example):
+    inputs = tokenizer(example['text'], return_tensors="pt")
+
+    with torch.no_grad():
+        logits = model(**inputs).logits
+
+    predicted_class_id = logits.argmax().item()
+    class_name = model.config.id2label[predicted_class_id]
+    predicted_confidences = softmax(logits[0], axis=0)
+    class_confidence = predicted_confidences[1]
+    example['predicted_class'] = class_name
+    example['predicted_confidence'] = class_confidence
+    return example
+
+def main():
+    dataset = load_dataset("csv", data_files="fts_to_inference.csv", split="train")
+    dataset = dataset.map(inference)
+    dataset.to_csv('fts_to_inference_output.csv')
+
+
+if __name__ == '__main__':
+    main()
+
+```
+
+</details>
 
 The algorithm predicts with a percentage chance for each prediction whether the relevant financial flows from FTS have full or partial relevance to CVA based on the text input. This resulting prediction data can then be merged into the FTS flow dataset through the following code chunk:
 
-\[Add code from ‘08\_fts\_keyword\_searching\_cash.R’ lines 159 to end\]
+<details>
+
+<summary>08_fts_keyword_searching_cash.R lines 159-end</summary>
+
+```R
+
+# Load and join inference data
+inference_output = fread("classifier_code/fts_to_inference_output.csv")
+mean(inference_output$predicted_class=="Full")
+hist(inference_output$predicted_confidence)
+inference_output$text = NULL
+
+fts = merge(fts, inference_output, by="id", all.x=T)
+
+# Change Partial relevance by ML
+fts$relevance_method[which(fts$keyword_match & fts$relevance == "None" & fts$predicted_class=="Partial")] = "Keyword + ML"
+fts$relevance_method[which(fts$project_cva & fts$relevance == "None" & fts$predicted_class=="Partial")] = "Project API + ML"
+fts$relevance[which((fts$keyword_match | fts$project_cva) & fts$relevance == "None" & fts$predicted_class=="Partial")] = "Partial"
+
+# Change Full relevance by ML
+fts$relevance_method[which(fts$keyword_match & fts$relevance == "None" & fts$predicted_class=="Full")] = "Keyword + ML"
+fts$relevance_method[which(fts$project_cva & fts$relevance == "None" & fts$predicted_class=="Full")] = "Project API + ML"
+fts$relevance[which((fts$keyword_match | fts$project_cva) & fts$relevance == "None" & fts$predicted_class=="Full")] = "Full"
+
+
+fts_flagged <- fts[
+  which(
+    fts$relevance != "None"
+  )
+]
+
+table(fts$relevance)
+table(fts_flagged$relevance_method)
+
+fwrite(fts_flagged, "output/fts_output_CVA.csv")
+
+```
+
+</details>
 
 ### Calculating the CVA-relevant funding amounts
 
@@ -276,21 +1506,141 @@ The logical steps for calculating CVA amounts are laid out as follows:
 
 To save time when executing this guide and methodology, the following script already joins the manual review decisions from former DI staff up to 2023 to the file. The remaining flows that have not yet coded and that remain after step 5 need to be then reviewed and classified manually. The following code chunk executes those steps:
 
-\[Add code 09\_calculate\_cva.R from beginning to line 73\]
+<details>
+
+<summary>09_calculate_cva.R lines 1-73</summary>
+
+```R
+list.of.packages <- c("data.table", "jsonlite","tidyverse", "stringr")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+suppressPackageStartupMessages(lapply(list.of.packages, require, character.only=T))
+
+getCurrentFileLocation <-  function()
+{
+  this_file <- commandArgs() %>% 
+    tibble::enframe(name = NULL) %>%
+    tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
+    dplyr::filter(key == "--file") %>%
+    dplyr::pull(value)
+  if (length(this_file)==0)
+  {
+    this_file <- rstudioapi::getSourceEditorContext()$path
+  }
+  return(dirname(this_file))
+}
+
+setwd(getCurrentFileLocation())
+setwd("..")
+
+fts_flagged = fread("output/fts_output_CVA.csv")
+fts_flagged$amountUSD = as.numeric(fts_flagged$amountUSD)
+# Count the number of destination clusters
+fts_flagged$destinationClusterCount = str_count(fts_flagged$destinationObjects_Cluster.name,";") + 1
+fts_flagged$destinationClusterCount[which(fts_flagged$destinationObjects_Cluster.name=="")] = 0
+
+# CVAamount for full is entire amountUSD
+fts_flagged$CVAamount = 0
+fts_flagged$CVAamount_type = ""
+fts_flagged$CVAamount[which(fts_flagged$sector_method_cluster_relevance=="Full")] = 
+  fts_flagged$amountUSD[which(fts_flagged$sector_method_cluster_relevance=="Full")]
+fts_flagged$CVAamount_type[which(fts_flagged$sector_method_cluster_relevance=="Full")] = "Sector, method, cluster"
+
+# CVAamount for partial is amountUSD divided by the number of destination clusters
+fts_flagged$CVAamount[which(fts_flagged$sector_method_cluster_relevance=="Partial")] = 
+  fts_flagged$amountUSD[which(fts_flagged$sector_method_cluster_relevance=="Partial")] /
+  fts_flagged$destinationClusterCount[which(fts_flagged$sector_method_cluster_relevance=="Partial")]
+fts_flagged$CVAamount_type[which(fts_flagged$sector_method_cluster_relevance=="Partial")] = "Partial cluster"
+
+
+# CVAamount for projects with reported CVA percentages
+fts_flagged$CVAamount[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))] = 
+  fts_flagged$amountUSD[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))] *
+  fts_flagged$project_cva_percentage[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))]
+fts_flagged$CVAamount_type[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))] = "Project CVA percentage"
+
+# CVAamount for flows with highly likely CVA predicted relevance and common words
+fts_flagged$common_words_match = grepl("\\bcash\\b|\\bvoucher\\b|\\bvouchers\\b|\\bcva\\b|\\bcoupon\\b", fts_flagged$all_text, ignore.case=T)
+high_confidence_index = which(fts_flagged$CVAamount == 0 & fts_flagged$predicted_confidence >= 0.8 & fts_flagged$common_words_match)
+fts_flagged$CVAamount[high_confidence_index] = 
+  fts_flagged$amountUSD[high_confidence_index]
+fts_flagged$CVAamount_type[high_confidence_index] = "ML high predicted relevance"
+
+
+# For remaining flows with CVAamount of zero that have predicted_confidence >= 0.5 and not (< 0.8 & common_word_match)
+# go to manual 
+manual_classify_index = which(
+  fts_flagged$CVAamount == 0 &
+    fts_flagged$predicted_confidence >= 0.5 &
+    !(fts_flagged$predicted_confidence >= 0.8 & fts_flagged$common_words_match)
+)
+fts_manual = fts_flagged[manual_classify_index,]
+fts_manual$CVAamount_type = "Manual"
+# Read last manual file
+fts_prior_manual = fread("reference_datasets/Mike_cva_decisions.csv")
+positive_ids = subset(fts_prior_manual, decision %in% c("Decision: accept; judgement", "Decision: include; judgement"))
+
+# Write out those that have not been previously manually reviewed
+fts_manual_uncoded = subset(fts_manual, !id %in% fts_prior_manual$id)
+fwrite(fts_manual_uncoded, "output/cva_to_manually_classify.csv")
+
+```
+
+</details>
 
 The following code chunk uses the output of the manual review to enhance the training data for the machine learning model:
 
-\[Add code 09\_calculate\_cva.R from from line 74 to line 87\]
+<details>
+
+<summary>09_calculate_cva.R lines 74-87</summary>
+
+```R
+
+# Treat those that have been manually reviewed as Full. Enhance training data
+fts_flagged_manual_full = subset(fts_flagged, id %in% positive_ids$id)
+fts_flagged_manual_full = fts_flagged_manual_full[,c("id", "all_text")]
+setnames(fts_flagged_manual_full, "all_text", "text")
+fts_flagged_manual_full$label = 1
+classifier_data = fread("classifier_code/CVA_flow_descriptions.csv")
+fts_flagged_manual_full = subset(fts_flagged_manual_full, !id %in% classifier_data$id)
+fts_flagged_manual_full = subset(fts_flagged_manual_full, !text %in% classifier_data$text)
+classifier_data = rbind(classifier_data, fts_flagged_manual_full)
+fwrite(classifier_data, "classifier_code/CVA_flow_descriptions.csv")
+fts_flagged$CVAamount[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)] =
+  fts_flagged$amountUSD[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)]
+fts_flagged$CVAamount_type[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)] = "Manual"
+
+```
+
+</details>
 
 Once the flows have been manually reviewed, they can be read into the R environment and merged with the fts\_cva dataset:
 
-\[Add code 09\_calculate\_cva.R from from line 88 to 92\]
+<details>
+
+<summary>09_calculate_cva.R lines 88-end</summary>
+
+```R
+# Manual file is filled out prior to this step
+fts_flagged_output = subset(fts_flagged, CVAamount > 0 & is.finite(CVAamount))
+if(file.exists("output/cva_manually_classified.csv")){
+  fts_manually_classified = fread("output/cva_manually_classified.csv")
+  fts_cva = rbind(fts_flagged_output, fts_manually_classified)
+}else{
+  fts_cva = fts_flagged_output
+}
+
+fwrite(fts_cva, "output/fts_cva.csv")
+
+```
+
+</details>
 
 This then completes the process for compiling a fully coded dataset of estimated funding amounts to humanitarian CVA based on FTS flow and project planning data.
 
 # CVA data analysis
 
-## Global estimated volumes of humanitarian CVA  {#global-estimated-volumes-of-humanitarian-cva}
+## Global estimated volumes of humanitarian CVA
 
 The primary use of the above data analysis, adapted from its early iteration from the [‘Counting Cash’ paper](https://odi.org/en/publications/counting-cash-tracking-humanitarian-expenditure-on-cash-based-programming/) in 2016, is to calculate an estimate of the global value of humanitarian cash and voucher assistance delivered in any given year. There are usually two sets of figures:
 
@@ -303,11 +1653,78 @@ The sub-grant data in the survey file includes a column ‘Take out’, which in
 
 The following code reads in the survey data into the R environment so that it can be analysed and combined with the fts\_cva data:
 
-\[Add code 10\_global\_cva\_analysis.R up to line 37\]
+<details>
+
+<summary>10_global_cva_analysis.R lines 1-37</summary>
+
+```R
+list.of.packages <- c("data.table","tidyverse", "openxlsx", "stringr", "stringdist")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+suppressPackageStartupMessages(lapply(list.of.packages, require, character.only=T))
+
+getCurrentFileLocation <-  function()
+{
+  this_file <- commandArgs() %>% 
+    tibble::enframe(name = NULL) %>%
+    tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
+    dplyr::filter(key == "--file") %>%
+    dplyr::pull(value)
+  if (length(this_file)==0)
+  {
+    this_file <- rstudioapi::getSourceEditorContext()$path
+  }
+  return(dirname(this_file))
+}
+
+setwd(getCurrentFileLocation())
+setwd("..")
+
+# Read previous output
+fts_cva = fread("output/fts_cva.csv")
+
+# Exclude large confidental flows
+fts_cva = subset(fts_cva, destinationObjects_Organization.name!="International NGOs (Confidential)")
+
+# Reads in the CVA survey data
+survey_data = read.xlsx("reference_datasets/cva_survey_data.xlsx", sheet=1)
+survey_data$Organisation = str_trim(survey_data$Organisation)
+survey_data$PC.USD.m = as.numeric(survey_data$PC.USD.m)
+survey_data$TV.USD.m = as.numeric(survey_data$TV.USD.m)
+sub_grants = read.xlsx("reference_datasets/cva_survey_data.xlsx", sheet=2)
+sub_grants = subset(sub_grants, tolower(Take.out)=="y")
+pc_tv_estimate = read.xlsx("reference_datasets/cva_survey_data.xlsx", sheet=3)
+setnames(pc_tv_estimate, "CVA.data.year", "year")
+
+```
+
+</details>
 
 To be able to analyse the FTS data along the survey data, we also need to add another reference file that identifies which FTS organisations have provided CVA survey data in any of the years and another file that aligns the implementing organisation types on FTS with the categories used in the final CVA analysis output:
 
-\[Add code 10\_global\_cva\_analysis.R up to line 52\]
+<details>
+
+<summary>10_global_cva_analysis.R lines 38-52</summary>
+
+```R
+# Reads in the fts_survey_overlap to use as mapping, overlap calculated by survey data automatically
+fts_survey_overlap = fread("reference_datasets/fts_survey_overlap.csv", header=T)
+name_mapping = fts_survey_overlap[,c("destinationObjects_Organization.name", "Survey name")]
+setnames(name_mapping, "Survey name", "Organisation")
+fts_survey_overlap_long = unique(survey_data[,c("Organisation", "Year")])
+fts_survey_overlap_long = merge(fts_survey_overlap_long, name_mapping, by="Organisation", all.x=T)
+# Missing names from mapping
+unique(fts_survey_overlap_long$Organisation[which(is.na(fts_survey_overlap_long$destinationObjects_Organization.name))])
+fts_survey_overlap_long = subset(fts_survey_overlap_long, !is.na(destinationObjects_Organization.name))
+survey_overlap_combinations = paste(fts_survey_overlap_long$destinationObjects_Organization.name, fts_survey_overlap_long$Year)
+
+# Reads in the attached cva_org_type file so that it can be joined with fts_cva by “destinationObjects_Organization.organizationSubTypes”
+cva_org_type = fread("reference_datasets/cva_org_type.csv")
+setnames(cva_org_type, "cva_org_type", "Org_type")
+
+```
+
+</details>
 
 What then remains is to follow the steps below to aggregate the CVA data in both datasets while avoiding double-counting:
 
@@ -330,7 +1747,7 @@ The second possible way involves using the project planned budget data ([see abo
 
 The dataset compiled above from FTS and projects data allows for a partial analysis of global CVA volumes by country. The comprehensiveness can be improved by also incorporating data from the WFP CASHboard ([see above](#wfp-cashboard-analytics)) to get a complete representation of WFP’s data. This would then require excluding WFP from the FTS data to avoid double-counting. The disadvantage for the WFP data is however that it does not include donor information.
 
-## Relative share of CVA as % of IHA {#relative-share-of-cva-as-%-of-iha}
+## Relative share of CVA as % of IHA
 
 There tends to be interest, especially from within the CALP Network, on what share of international humanitarian assistance (IHA) is delivered as CVA. Calculating this is currently flawed and only a best estimate given it involves comparing financial inputs to the humanitarian system with its outputs (with CVA a delivery modality). Given the lack of comprehensive public reporting on how much and when humanitarian activities funding from international funding deliver CVA, there is no sufficient data to connect the two. There can also likely be a mismatches (both ways) of funding being disbursed by a donor in one year and it being delivered as CVA in another, making it harder to compare data on financial inputs and outputs in the same year.
 
@@ -346,7 +1763,7 @@ FTS and project data as main alternative data sources with much more contextual 
 
 Further, FTS represents transfers between organisations (unable to easily capture transfer values in its current state) and project data represents planning figures. When project data merged with FTS, only works for plans with the relevant questions, and only around 60% of funding to those plans reported with project IDs.
 
-# Suggestions for future improvements {#suggestions-for-future-improvements}
+# Suggestions for future improvements
 
 Better reporting by implementers \- actually follow the minimum agreements as agreed, especially by publishing comprehensive and timely CVA data to 
 
