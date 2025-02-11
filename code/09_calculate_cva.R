@@ -42,7 +42,7 @@ fts_flagged$CVAamount_type[which(fts_flagged$sector_method_cluster_relevance=="P
 
 # CVAamount for projects with reported CVA percentages
 fts_flagged$CVAamount[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))] = 
-  fts_flagged$amountUSD[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))] /
+  fts_flagged$amountUSD[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))] *
   fts_flagged$project_cva_percentage[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))]
 fts_flagged$CVAamount_type[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))] = "Project CVA percentage"
 
@@ -87,6 +87,11 @@ fts_flagged$CVAamount_type[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in
 
 # Manual file is filled out prior to this step
 fts_flagged_output = subset(fts_flagged, CVAamount > 0 & is.finite(CVAamount))
-fts_manually_classified = fread("output/cva_manually_classified.csv")
-fts_cva = rbind(fts_flagged_output, fts_manually_classified)
+if(file.exists("output/cva_manually_classified.csv")){
+  fts_manually_classified = fread("output/cva_manually_classified.csv")
+  fts_cva = rbind(fts_flagged_output, fts_manually_classified)
+}else{
+  fts_cva = fts_flagged_output
+}
+
 fwrite(fts_cva, "output/fts_cva.csv")
