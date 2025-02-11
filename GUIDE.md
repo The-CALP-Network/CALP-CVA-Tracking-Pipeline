@@ -27,7 +27,7 @@ In recent years, at least 90% of the total value of the global CVA estimate was 
 | Value of sub-grants provided for CVA | The value captured under other provided data on CVA in the survey that was provided as sub-grant to another implementing agency. |
 | Comments | Any relevant caveats to or comments on the provided data, including on possible reasons for increases or decreases in volumes. We also request the breakdown of provided or received sub-grants for CVA so that we can avoid double-counting across different survey respondents. |
 
-The main difference between the minimum agreements on tracking CVA and our survey is the inclusion of sub-grant data. This is because it is common practice for a large recipient of funding for CVA from government donors (e.g., WFP, or UNHCR) to then sub-grant all or aspects of the delivery of that CVA to recipients to another implementing agency. Given we request data from those large actors as well as smaller agencies that receive funding from them, we need the sub-grant data to ensure that there is no double-counting across survey data from both ([see below](#heading=h.elvmhtxbd1pc)).
+The main difference between the minimum agreements on tracking CVA and our survey is the inclusion of sub-grant data. This is because it is common practice for a large recipient of funding for CVA from government donors (e.g., WFP, or UNHCR) to then sub-grant all or aspects of the delivery of that CVA to recipients to another implementing agency. Given we request data from those large actors as well as smaller agencies that receive funding from them, we need the sub-grant data to ensure that there is no double-counting across survey data from both ([see below](#global-estimated-volumes-of-humanitarian-cva)).
 
 
 ## Financial Tracking Service
@@ -502,7 +502,7 @@ fts_save_master()
 
 The [Projects module](https://projects.hpc.tools/) by UN OCHA is part of the Humanitarian Programme Cycle and it facilitates the project submission, review and approval cycle in countries with project-based Humanitarian Response Plans. This is to ensure that the needs and populations that are planned to be addressed by different agencies in a specific context are reviewed by the respective clusters to enhance coordination and coherence across those projects. A large amount of data on each project is collected as part of this process, including data that is relevant to CVA.
 
-It is important to recognise that this data reflects the planning stage and may not be updated retrospectively if project aspects change during the implementation. [Below](#heading=h.hmsi8ftbjsat), we will combine it with FTS data on funding flows to be able to identify how much funding went to projects that planned for the delivery of CVA.
+It is important to recognise that this data reflects the planning stage and may not be updated retrospectively if project aspects change during the implementation. [Below](#global-estimated-volumes-of-humanitarian-cva), we will combine it with FTS data on funding flows to be able to identify how much funding went to projects that planned for the delivery of CVA.
 
 <details>
 
@@ -701,7 +701,7 @@ There are a few supplementary datasets that are not directly related to CVA but 
 
 ### Exchange rates
 
-All currency units tend to be converted to US$ to have a uniform currency across different financial amounts. There are a number of possible data sources to use for this conversion. In previous iterations of this methodology, DI chose to align the exchange rates for this analysis with that used in other parts of DI’s [Global Humanitarian Assistance Reports](https://devinit.org/resources/falling-short-humanitarian-funding-reform/) for consistent currency conversions across analyses. This might be relevant when trying to estimate the share of total international humanitarian assistance (IHA) made up by CVA ([see below](#relative-share-of-cva-as-%-of-iha)).
+All currency units tend to be converted to US$ to have a uniform currency across different financial amounts. There are a number of possible data sources to use for this conversion. In previous iterations of this methodology, DI chose to align the exchange rates for this analysis with that used in other parts of DI’s [Global Humanitarian Assistance Reports](https://devinit.org/resources/falling-short-humanitarian-funding-reform/) for consistent currency conversions across analyses. This might be relevant when trying to estimate the share of total international humanitarian assistance (IHA) made up by CVA ([see below](#relative-share-of-cva-as--of-iha)).
 
 If following that approach, the exchanges used in different years to convert different currencies into US$ would be primarily sourced from the OECD DAC, and supplemented by the IMF and World Bank for currencies missing from the OECD DAC, as executed by the following code chunk:
 
@@ -808,7 +808,7 @@ However, this means that the increase in global volumes of humanitarian CVA is l
 
 For time-series analysis of financial data over a long time period, it can make sense to adjust financial data in each year for inflation to have better comparability over time. For example, in current prices, the total bilateral official development assistance from OECD DAC countries increased by 324% between 2002 and 2022, but when adjusting for inflation by deflating both to constant 2022 prices, this changes to an increase by only 189%.
 
-Deflators are mostly relevant for this guide as consideration for future methodological adjustments ([see below](#suggestions-for-future-improvements)) and for calculating CVA as % of IHA, the latter previously calculated by DI in constant prices ([see below](#relative-share-of-cva-as-%-of-iha)). The following code chunk calculates the deflators by donor, which are required to change the IHA figures back to current prices so that they are more comparable with the CVA figures:  
+Deflators are mostly relevant for this guide as consideration for future methodological adjustments ([see below](#suggestions-for-future-improvements)) and for calculating CVA as % of IHA, the latter previously calculated by DI in constant prices ([see below](#relative-share-of-cva-as--of-iha)). The following code chunk calculates the deflators by donor, which are required to change the IHA figures back to current prices so that they are more comparable with the CVA figures:  
 
 <details>
 
@@ -1775,5 +1775,5 @@ Technically:
 
 * Automate the de-duplication of subgrants (Alex already did most of the coding work on this)  
 * Change sequence of logical steps for CVA amount calculation  
-* Can think about deflating CVA given the time horizon is extending so far but not sure how to best do that \- CVA as % of IHA estimate gets around that somewhat but also a flawed calculation ([see above](#relative-share-of-cva-as-%-of-iha))  
+* Can think about deflating CVA given the time horizon is extending so far but not sure how to best do that \- CVA as % of IHA estimate gets around that somewhat but also a flawed calculation ([see above](#relative-share-of-cva-as--of-iha))  
 * How to handle anonymous reporting on FTS \- e.g., international NGO’s (confidential)
