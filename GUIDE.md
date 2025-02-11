@@ -39,7 +39,8 @@ The central data element of the FTS data structure is the financial flow between
 Before identifying the FTS data that is relevant to CVA, we first have to extract the financial flows data from FTS. 
 
 The first step of that process is to retrieve the flow data for the year of interest from the FTS API. The request to the API can also be tailored for specific plans, emergencies, global clusters, recipient countries or more. The following code accesses the FTS API to get flows data:
-
+<details>
+    <summary>01_fts_get_flows.R</summary>
 ```R
 fts_get_flows <- function(year = NULL, planid = NULL, emergencyid = NULL, globalclusterid = NULL, destinationlocationid = NULL, unnest = T){
   lapply(c("data.table", "jsonlite", "httr"), require, character.only=T)
@@ -114,6 +115,7 @@ fts_get_flows <- function(year = NULL, planid = NULL, emergencyid = NULL, global
   return(flows)
 }
 ```
+</details>
 
 The following function will be required to split FTS flows that run across different years by each year, assuming an even distribution over time:
 
