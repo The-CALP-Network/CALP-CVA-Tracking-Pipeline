@@ -1733,7 +1733,7 @@ What then remains is to follow the steps below to aggregate the CVA data in both
 3. For FTS data, we aggregate all the CVA amounts by cva\_org\_type (to match survey data) and year, ensuring we only include data for destination organisations in years for which those organisations did not also submit a survey. This provides the programming costs CVA estimate from FTS data additional to the CVA survey. We multiple those values by the corresponding percentage of the transfer value/programming cost estimate for each year to obtain the FTS estimates on CVA transfer values supported by this funding.  
 4. We add the values calculated from survey and FTS data for both programming costs and transfer values by organisation type and year to obtain the final set of global CVA estimates.
 
-The following chunk of codes executes these aggregation steps:
+The following chunk of codes executes these aggregation steps and removes possible instances of double-counting with recipients of CVA sub-grants (i.e., funding from one implementing agency to another for CVA delivery):
 
 <details>
 
