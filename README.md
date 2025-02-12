@@ -32,6 +32,8 @@ source venv/bin/activate
 python3 flow_inference.py
 cd ..
 # Finish 08
+Rscript code/09_calculate_cva.R
+Rscript code/10_global_cva_analysis.R
 ```
 
 ## File purposes and descriptions
