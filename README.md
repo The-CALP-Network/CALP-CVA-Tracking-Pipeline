@@ -206,6 +206,24 @@ This script calculates the Cash and Voucher Assistance (CVA) amounts from the fl
 **Purpose:**
 - To calculate CVA amounts from flagged FTS flows and prepare data for manual classification.
 
+### code/10_global_cva_analysis.R
+
+This script performs a global analysis of Cash and Voucher Assistance (CVA) amounts. It aggregates CVA data from various sources, matches subgrant recipients to organizations, and calculates unduplicated CVA amounts by organization type.
+
+**Inputs:**
+- `output/fts_cva.csv`: A CSV file containing flagged FTS flows with CVA amounts.
+- `reference_datasets/cva_survey_data.xlsx`: An Excel file containing CVA survey data.
+- `reference_datasets/fts_survey_overlap.csv`: A CSV file containing the overlap between FTS and survey data.
+- `reference_datasets/cva_org_type.csv`: A CSV file containing organization types for CVA.
+- `reference_datasets/usd_exchange_rates.csv`: A CSV file containing USD exchange rates for multiple countries and years.
+
+**Outputs:**
+- `output/cva_agg.csv`: A CSV file containing aggregated CVA data by organization.
+- `output/cva_agg_org_type.csv`: A CSV file containing aggregated CVA data by organization type.
+
+**Purpose:**
+- To perform a comprehensive analysis of global CVA amounts, including aggregation, matching, and calculation of unduplicated amounts by organization type.
+
 ### code/util_oecd_sdmx.R
 
 This script defines a function to retrieve and process exchange rate data from the OECD SDMX-JSON API. It parses the JSON response and converts it into a structured data frame.
