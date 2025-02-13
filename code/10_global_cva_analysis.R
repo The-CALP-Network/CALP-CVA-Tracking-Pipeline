@@ -280,6 +280,10 @@ match_df$perfect_match_name[
 match_df$perfect_match_name[
   which(match_df$subgrant_recipient_org=="adra romania")
 ] = "adventist development and relief agency"
+match_df$perfect_match_name[
+  which(match_df$subgrant_recipient_org=="somali cash consortium")
+] = "concern worldwide"
+
 match_df$unmatched = is.na(match_df$perfect_match_name) &
   is.na(match_df$fuzzy_match_name) &
   is.na(match_df$substring_a_match_name) &
