@@ -54,6 +54,7 @@ setnames(cva_org_type, "cva_org_type", "Org_type")
 # Aggregate FTS for joining
 fts_cva_agg = fts_cva[,.(PC.USD.m=sum(CVAamount) / 1e6), by=.(
   year,
+  newMoney,
   destinationObjects_Organization.name,
   destinationObjects_Organization.organizationSubTypes
 )]
@@ -78,6 +79,7 @@ setnames(
   c("Year")
 )
 survey_data$source = "Survey"
+survey_data$newMoney = "FALSE"
 cva_agg = rbindlist(list(survey_data, fts_cva_agg), fill=T)
 cva_agg$Organisation[which(is.na(cva_agg$Organisation))] = 
   cva_agg$destinationObjects_Organization.name[which(is.na(cva_agg$Organisation))]
@@ -278,6 +280,10 @@ match_df$perfect_match_name[
 match_df$perfect_match_name[
   which(match_df$subgrant_recipient_org=="adra romania")
 ] = "adventist development and relief agency"
+match_df$perfect_match_name[
+  which(match_df$subgrant_recipient_org=="somali cash consortium")
+] = "concern worldwide"
+
 match_df$unmatched = is.na(match_df$perfect_match_name) &
   is.na(match_df$fuzzy_match_name) &
   is.na(match_df$substring_a_match_name) &
@@ -293,16 +299,17 @@ subgrant_org_mapping[which(is.na(subgrant_org_mapping))] =
   match_df$substring_b_match_name[which(is.na(subgrant_org_mapping))]
 names(subgrant_org_mapping) = match_df$subgrant_recipient_org
 sub_grants$clean_org = subgrant_org_mapping[sub_grants$clean_name]
+sub_grants$newMoney = "FALSE"
 
 # Aggregate
 sub_grants_agg = data.table(sub_grants)[
   ,.(PC.USD.m_subgrant=sum(Amount.USD, na.rm=T)),
-  by=.(clean_org, Year)
+  by=.(clean_org, Year, newMoney)
 ]
 sub_grants_agg = subset(sub_grants_agg, !is.na(clean_org))
 
 # Merge and subtract
-cva_agg = merge(cva_agg, sub_grants_agg, by=c("clean_org", "Year"), all.x=T)
+cva_agg = merge(cva_agg, sub_grants_agg, by=c("clean_org", "Year", "newMoney"), all.x=T)
 cva_agg$PC.USD.m_subgrant[which(is.na(cva_agg$PC.USD.m_subgrant))] = 0
 cva_agg$PC.USD.m_undoubled = cva_agg$PC.USD.m - cva_agg$PC.USD.m_subgrant
 cva_agg$PC.USD.m_undoubled = pmax(cva_agg$PC.USD.m_undoubled, 0)
