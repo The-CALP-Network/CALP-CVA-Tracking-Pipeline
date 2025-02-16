@@ -22,7 +22,7 @@ source("04_fts_curated_flows.R")
 setwd("..")
 
 fts_save_master <- function(years = 2017:2024, update_years = NA, path = "fts/"){
-  fts_all <- fts_curated_flows(years, update_years = update_years)
+  fts_all <- fts_curated_flows(years, update_years = update_years, dataset_path = path)
   for(i in 1:length(years)){
     fwrite(fts_all[year == years[[i]]], paste0(path, "fts_curated_", years[[i]], ".csv"))
   }

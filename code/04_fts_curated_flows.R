@@ -88,6 +88,9 @@ fts_curated_flows <- function(years = 2017:2024, update_years = NA, dataset_path
   fts[, multiyear := grepl(";", destinationObjects_UsageYear.name)]
   fts <- fts_split_rows(fts, value.cols = "amountUSD", split.col = "year", split.pattern = "; ", remove.unsplit = T)
   
+  # Split rows by location
+  fts <- fts_split_rows(fts, value.cols = "amountUSD", split.col = "destinationObjects_Location.name", split.pattern = "; ", remove.unsplit = T)
+  
   #Set multi-country flows to 'multi-destination_org_country' in destination_org_country column
   isos <- fread("reference_datasets/isos.csv", encoding = "UTF-8", showProgress = F)
   fts <- merge(fts, isos[, .(countryname_fts, destination_org_iso3 = iso3)], by.x = "destinationObjects_Location.name", by.y = "countryname_fts", all.x = T, sort = F)
@@ -103,7 +106,12 @@ fts_curated_flows <- function(years = 2017:2024, update_years = NA, dataset_path
   fts <- merge(fts, fts_orgs, by = "sourceObjects_Organization.id", all.x = T, sort = F)
   
   #Deflate
-  deflators <- get_deflators(base_year = base_year, currency = "USD", weo_ver = weo_ver, approximate_missing = T)
+  if(!file.exists("reference_datasets/deflators.csv")){
+    deflators <- get_deflators(base_year = base_year, currency = "USD", weo_ver = weo_ver, approximate_missing = T)
+    fwrite(deflators, "reference_datasets/deflators.csv")
+  }else{
+    deflators = fread("reference_datasets/deflators.csv")
+  }
   deflators <- deflators[, .(source_org_iso3 = ISO, year = as.character(year), deflator = gdp_defl)]
   
   fts <- merge(fts, deflators, by = c("source_org_iso3", "year"), all.x = T, sort = F)
