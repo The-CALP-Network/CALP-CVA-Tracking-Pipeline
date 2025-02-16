@@ -30,7 +30,7 @@ for (i in 1:length(years)){
   
 }
 
-fts <- rbindlist(fts_curated, use.names=T)
+fts <- rbindlist(fts_curated, use.names=T, fill=T)
 fts <- fts[as.character(year) >= 2017]
 
 # Load in project data
@@ -162,31 +162,34 @@ fwrite(to_inference, "classifier_code/fts_to_inference.csv")
 # python3 flow_inference.py
 
 # Load and join inference data
-inference_output = fread("classifier_code/fts_to_inference_output.csv")
-mean(inference_output$predicted_class=="Full")
-hist(inference_output$predicted_confidence)
-inference_output$text = NULL
-
-fts = merge(fts, inference_output, by="id", all.x=T)
-
-# Change Partial relevance by ML
-fts$relevance_method[which(fts$keyword_match & fts$relevance == "None" & fts$predicted_class=="Partial")] = "Keyword + ML"
-fts$relevance_method[which(fts$project_cva & fts$relevance == "None" & fts$predicted_class=="Partial")] = "Project API + ML"
-fts$relevance[which((fts$keyword_match | fts$project_cva) & fts$relevance == "None" & fts$predicted_class=="Partial")] = "Partial"
-
-# Change Full relevance by ML
-fts$relevance_method[which(fts$keyword_match & fts$relevance == "None" & fts$predicted_class=="Full")] = "Keyword + ML"
-fts$relevance_method[which(fts$project_cva & fts$relevance == "None" & fts$predicted_class=="Full")] = "Project API + ML"
-fts$relevance[which((fts$keyword_match | fts$project_cva) & fts$relevance == "None" & fts$predicted_class=="Full")] = "Full"
-
-
-fts_flagged <- fts[
-  which(
-    fts$relevance != "None"
-  )
-]
-
-table(fts$relevance)
-table(fts_flagged$relevance_method)
-
-fwrite(fts_flagged, "output/fts_output_CVA.csv")
+if(file.exists("classifier_code/fts_to_inference_output.csv")){
+  inference_output = fread("classifier_code/fts_to_inference_output.csv")
+  mean(inference_output$predicted_class=="Full")
+  hist(inference_output$predicted_confidence)
+  inference_output$text = NULL
+  
+  fts$id = as.integer(fts$id)
+  fts = merge(fts, inference_output, by="id", all.x=T)
+  
+  # Change Partial relevance by ML
+  fts$relevance_method[which(fts$keyword_match & fts$relevance == "None" & fts$predicted_class=="Partial")] = "Keyword + ML"
+  fts$relevance_method[which(fts$project_cva & fts$relevance == "None" & fts$predicted_class=="Partial")] = "Project API + ML"
+  fts$relevance[which((fts$keyword_match | fts$project_cva) & fts$relevance == "None" & fts$predicted_class=="Partial")] = "Partial"
+  
+  # Change Full relevance by ML
+  fts$relevance_method[which(fts$keyword_match & fts$relevance == "None" & fts$predicted_class=="Full")] = "Keyword + ML"
+  fts$relevance_method[which(fts$project_cva & fts$relevance == "None" & fts$predicted_class=="Full")] = "Project API + ML"
+  fts$relevance[which((fts$keyword_match | fts$project_cva) & fts$relevance == "None" & fts$predicted_class=="Full")] = "Full"
+  
+  
+  fts_flagged <- fts[
+    which(
+      fts$relevance != "None"
+    )
+  ]
+  
+  table(fts$relevance)
+  table(fts_flagged$relevance_method)
+  
+  fwrite(fts_flagged, "output/fts_output_CVA.csv")
+}

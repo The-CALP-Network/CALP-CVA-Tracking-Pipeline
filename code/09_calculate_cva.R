@@ -76,11 +76,11 @@ fts_flagged_manual_full = subset(fts_flagged, id %in% positive_ids$id)
 fts_flagged_manual_full = fts_flagged_manual_full[,c("id", "all_text")]
 setnames(fts_flagged_manual_full, "all_text", "text")
 fts_flagged_manual_full$label = 1
-classifier_data = fread("classifier_code/CVA_flow_descriptions.csv")
+classifier_data = read.csv("classifier_code/CVA_flow_descriptions.csv")
 fts_flagged_manual_full = subset(fts_flagged_manual_full, !id %in% classifier_data$id)
 fts_flagged_manual_full = subset(fts_flagged_manual_full, !text %in% classifier_data$text)
 classifier_data = rbind(classifier_data, fts_flagged_manual_full)
-fwrite(classifier_data, "classifier_code/CVA_flow_descriptions.csv")
+write.csv(classifier_data, "classifier_code/CVA_flow_descriptions.csv", row.names=F)
 fts_flagged$CVAamount[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)] =
   fts_flagged$amountUSD[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)]
 fts_flagged$CVAamount_type[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)] = "Manual"
