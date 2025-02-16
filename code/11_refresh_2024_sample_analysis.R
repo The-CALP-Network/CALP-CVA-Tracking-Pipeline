@@ -43,7 +43,7 @@ source("code/09_calculate_cva.R")
 # Load fts_cva.csv
 fts = fread("output/fts_cva.csv")
 
-# Subset to 2024 and USA
+# Subset to 2024, non-pledge, and USA
 usa_source_orgs = c(
   "United States of America, Government of",
   "United States Department of State",
@@ -51,7 +51,7 @@ usa_source_orgs = c(
 )
 fts_2024 = subset(
   fts,
-  year == 2024
+  year == 2024 & status != "pledge"
 )
 fts_usa_2024 = subset(
   fts_2024,
