@@ -701,7 +701,7 @@ There are a few supplementary datasets that are not directly related to CVA but 
 
 ### Exchange rates
 
-All currency units tend to be converted to US$ to have a uniform currency across different financial amounts. There are a number of possible data sources to use for this conversion. In previous iterations of this methodology, DI chose to align the exchange rates for this analysis with that used in other parts of DI’s [Global Humanitarian Assistance Reports](https://devinit.org/resources/falling-short-humanitarian-funding-reform/) for consistent currency conversions across analyses. This might be relevant when trying to estimate the share of total international humanitarian assistance (IHA) made up by CVA ([see below](#relative-share-of-cva-as--of-iha)).
+All currency units tend to be converted to US$ to have a uniform currency across different financial amounts. There are a number of possible data sources to use for this conversion. In previous iterations of this methodology, DI chose to align the exchange rates for this analysis with that used in other parts of DI’s [Global Humanitarian Assistance Reports]([https://devinit.github.io/resources/falling-short-humanitarian-funding-reform/]) for consistent currency conversions across analyses. This might be relevant when trying to estimate the share of total international humanitarian assistance (IHA) made up by CVA ([see below](#relative-share-of-cva-as--of-iha)).
 
 If following that approach, the exchanges used in different years to convert different currencies into US$ would be primarily sourced from the OECD DAC, and supplemented by the IMF and World Bank for currencies missing from the OECD DAC, as executed by the following code chunk:
 
@@ -2018,7 +2018,13 @@ The second possible way involves using the project planned budget data ([see abo
 
 ## CVA data by country
 
-The dataset compiled above from FTS and projects data allows for a partial analysis of global CVA volumes by country. The comprehensiveness can be improved by also incorporating data from the WFP CASHboard ([see above](#wfp-cashboard-analytics)) to get a complete representation of WFP’s data. This would then require excluding WFP from the FTS data to avoid double-counting. The disadvantage for the WFP data is however that it does not include donor information.
+The dataset compiled above from FTS and projects data allows for a partial analysis of global CVA volumes by country. Based on those two data sources, CVA data is likely to be more comprehensive (though still not complete) for countries with  data on the planned share of CVA within project budgets and/or with a multi-purpose cash field cluster. The comprehensiveness can be further improved by incorporating data from the WFP CASHboard ([see above](#wfp-cashboard-analytics)) to get a complete representation of WFP’s CVA delivery by country. This would then require excluding WFP from the FTS/projects data to avoid double-counting. The disadvantage for the WFP data is however that it does not include donor information.
+
+Another possible avenue for CVA data analysis by country is to collate context-specific data from Cash Working Groups (CWGs). If covering the CVA delivery across all clusters and market-based delivery modalities in the  context, CWG data is likely more comprehensive than the FTS/projects data for that context. However, there are a few challenges with using CWG data:
+
+* The data is not standardised across CWGs in different contexts, making comparable or aggregated global/regional analysis challenging.
+* Most CWGs share data in the form of static, PDF or dynamic, PowerBI dashboards. Neither however tends to come with the possibility to download disaggregated data by implementer. This makes scraping this data labour intensive or not possible, sometimes requiring to reach out to CWGs directly.
+* Most CWGs focus on the delivery and the 3/4Ws of CVA data, but do not include information on CVA donors.
 
 ## Relative share of CVA as % of IHA
 
@@ -2030,23 +2036,24 @@ The IHA figures used are those calculated by DI, which are partly based on a lab
 
 # Methodological limitations
 
-Survey data provides very few data points to further investigate CVA data (e.g., lack of donor, country or cluster data).
+For the global estimate of humanitarian CVA, the bulk of the data underlying this estimate is derived from survey data provided by implementing agencies. However, given the survey is designed to present a minimal reporting burden on respondents ([see above](#cva-survey)), it provides very few data points beyond global totals to further investigate CVA trends (e.g., lack of donor, country or cluster data).
 
-FTS and project data as main alternative data sources with much more contextual data are inconsistently reported in terms of CVA data and therefore only provides a partial picture across all dimensions. 
+The FTS and project data have the advantage that they embed reporting on CVA within other routine reporting on funding flows or projects, allowing for potentially much richer CVA analysis. However, given there is not a single donor nor implementer that comprehensively reports on their CVA portfolio to those data platforms, it only provides a partial view with representing between around a third to half of the global volumes of humanitarian CVA (as estimated based on survey data of global totals), though coverage is higher for countries with better CVA reporting ([see above](#cva-data-by-country)). 
 
-Further, FTS represents transfers between organisations (unable to easily capture transfer values in its current state) and project data represents planning figures. When project data merged with FTS, only works for plans with the relevant questions, and only around 60% of funding to those plans reported with project IDs.
+Further, FTS is designed to represents transfers between organisations, while CVA transfers to recipients are a form of organisational expenditure. This means that it would require significant changes not just to the level of reporting but also the scope and structure of FTS to be able to more accurately capture such expenditure, given it currently does not include any reporting on expenditure whatsoever. 
+
+Finally, while the project data can yield a quantiative view of the planned share of project budgets to be delivered as CVA, this only works for response plans with project-level data. In 2021, those plans absorbed around a third of funding reported to FTS for that year and of that, only around 60% of funding to those plans was reported with project IDs and can therefore be mapped against these planned CVA project budget shares.
 
 # Suggestions for future improvements
 
-Better reporting by implementers \- actually follow the minimum agreements as agreed, especially by publishing comprehensive and timely CVA data to 
+The most important lever for more granular publicly available data on CVA is better reporting by implementing agencies of CVA. If the [minimum agreements on tracking CVA](https://www.calpnetwork.org/publication/tracking-cash-and-voucher-assistance-agreements-recommendations-and-minimum-requirements-from-the-grand-bargain-cash-workstream/) were followed by the many agencies that endorsed them within the Grand Bargain, much of the workarounds due to partial CVA data laid out in this guide would be superfluous and there would be timely, disaggregated data on CVA as part of other routine reporting processes. This data would allow for better coordination of CVA delivery, reduce the need for parallel CVA reporting processes in country, enable greater accountability for donors and implementers that committed to scaling up CVA, and more. 
 
-Point to the CVA collected by cash working groups and how that could be improved through better interoperability with, e.g., FTS data
+Short of these much needed but wider-ranging changes to reporting, a low hanging fruit might be for cash working groups to improve the interoperability of the CVA data they collect by including unique identifiers, such as project IDs, and by making the data underlying their dashboards publicly available (subject to security screenings of sensitive information).
 
-Social protection payments in crisis countries \- no comparable global data source, but might be possible to incorporate in specific contexts with available data
+Related to humanitarian CVA and not covered in this guide, there still is a blind spot on the scale of social protection payments in crisis countries to crisis-affected populations. Those payments arguably represent humanitarian CVA delivered by or aligned with the national government. However, there is no comparable global data source on those payments that allows for the identification of transfer volumes to crisis-affected areas or populations. This is unlikely to be feasible given the many differences of social protection payment schemes and systems between countries. It might be possible though to shed more light on such payments and their current and future utility to crisis-affected populations in specific contexts with available data.
 
-Technically:
-
-* Automate the de-duplication of subgrants (Alex already did most of the coding work on this)  
-* Change sequence of logical steps for CVA amount calculation  
-* Can think about deflating CVA given the time horizon is extending so far but not sure how to best do that \- CVA as % of IHA estimate gets around that somewhat but also a flawed calculation ([see above](#relative-share-of-cva-as--of-iha))  
-* How to handle anonymous reporting on FTS \- e.g., international NGO’s (confidential)
+Other, technical improvements to the above guide might include:
+ 
+* Changing the sequence of logical steps for CVA amount calculation depending on what way of reporting on CVA to FTS or the projects module is deemed to be most/least reliable ([see above](#calculating-the-cva-relevant-funding-amounts))
+* Triangulating the robustness of planned CVA project budget shares for specific countries with data from CWGs if available  
+* Adjusting CVA financial volumes for inflation, given the time horizon of the global analysis is approaching one decade and therefore increases in prices over that entire time period inflate the growing significance of CVA within humanitarian responses as those become more expensive. However, the choice of deflators would likely be arbitrary and flawed. ([see above](#relative-share-of-cva-as--of-iha))
