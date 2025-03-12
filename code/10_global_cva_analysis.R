@@ -321,11 +321,20 @@ cva_agg = merge(cva_agg, sub_grants_agg, by=c("clean_org", "Year", "newMoney"), 
 cva_agg$PC.USD.m_subgrant[which(is.na(cva_agg$PC.USD.m_subgrant))] = 0
 cva_agg$PC.USD.m_undoubled = cva_agg$PC.USD.m - cva_agg$PC.USD.m_subgrant
 cva_agg$PC.USD.m_undoubled = pmax(cva_agg$PC.USD.m_undoubled, 0)
-cva_agg_org_type = cva_agg[,.(PC.USD.m=sum(PC.USD.m_undoubled, na.rm=T)), by=.(Year, Org_type)]
+
+# calculate an undoubled TV column equal to the TV column minus the ‘to be undoubled’ PC sub-grant value 
+# for the respective sub-grant donor times the PC TV estimate % for the respective year
 setnames(pc_tv_estimate, "year", "Year")
-cva_agg_org_type = merge(cva_agg_org_type, pc_tv_estimate, by="Year", all.x=T)
-cva_agg_org_type$TV.USD.m = cva_agg_org_type$PC.USD.m * cva_agg_org_type$PC.average.used
-cva_agg_org_type$PC.average.used = NULL
+cva_agg = merge(cva_agg, pc_tv_estimate, by="Year", all.x=T)
+cva_agg$TV.USD.m_subgrant = cva_agg$PC.USD.m_subgrant * cva_agg$PC.average.used
+cva_agg$PC.average.used = NULL
+cva_agg$TV.USD.m_undoubled = cva_agg$TV.USD.m - cva_agg$TV.USD.m_subgrant
+cva_agg$TV.USD.m_undoubled = pmax(cva_agg$TV.USD.m_undoubled, 0)
+
+cva_agg_org_type = cva_agg[,.(
+  PC.USD.m=sum(PC.USD.m_undoubled, na.rm=T),
+  TV.USD.m=sum(TV.USD.m_undoubled, na.rm=T)
+), by=.(Year, Org_type)]
 
 # Write
 fwrite(cva_agg, "output/cva_agg.csv")
