@@ -84,6 +84,10 @@ cva_agg = rbindlist(list(survey_data, fts_cva_agg), fill=T)
 cva_agg$Organisation[which(is.na(cva_agg$Organisation))] = 
   cva_agg$destinationObjects_Organization.name[which(is.na(cva_agg$Organisation))]
 
+# Where subgrant recipient is unknown, set it equal to donor name so it is deduplicated
+sub_grants$Recipient.org[which(sub_grants$Recipient.org=="Unknown")] =
+  sub_grants$Donor.org[which(sub_grants$Recipient.org=="Unknown")]
+
 # Match subgrant names
 quotemeta <- function(string) {
   str_replace_all(string, "(\\W)", "\\\\\\1")
