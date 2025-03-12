@@ -174,3 +174,4 @@ cython_debug/
 # Private survey data
 reference_datasets/cva_survey_data.xlsx
 .Rproj.user
+output/cva_agg.csv 
