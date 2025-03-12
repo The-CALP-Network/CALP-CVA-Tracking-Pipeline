@@ -88,6 +88,10 @@ cva_agg$Organisation[which(is.na(cva_agg$Organisation))] =
 sub_grants$Recipient.org[which(sub_grants$Recipient.org=="Unknown")] =
   sub_grants$Donor.org[which(sub_grants$Recipient.org=="Unknown")]
 
+# Where subgrant recipient type is RCRC and year < 2024, set it equal to donor name
+sub_grants$Recipient.org[which(sub_grants$Recipient.org.type=="RCRC" & sub_grants$Year < 2024)] =
+  sub_grants$Donor.org[which(sub_grants$Recipient.org.type=="RCRC" & sub_grants$Year < 2024)]
+
 # Match subgrant names
 quotemeta <- function(string) {
   str_replace_all(string, "(\\W)", "\\\\\\1")
