@@ -4,7 +4,7 @@
 
 This methodology and step-by-step guide outlines the process formerly followed by Development Initiatives (DI) and the CALP Network to produce a best possible estimate on global financial volumes of humanitarian cash and voucher assistance. It explains the technical steps alongside their reasoning from data extraction to identifying CVA data, combining it from different datasets and finally analysing the output.
 
-The guide is intended to capture the methodological knowledge and methods by former DI staff, following the insolvency of DI, and thereby ensure that the work can be adapted and continued if the demand for it continues to exist. It therefore also highlights the different aspects of the methodology that need to be reviewed on an ongoing basis and concludes with suggestions for further improvement.
+The guide is intended to capture the methodological knowledge and methods used by former DI staff, following the insolvency of DI, and thereby ensure that the work can be adapted and continued if the demand for it continues to exist. It therefore also highlights the different aspects of the methodology that need to be reviewed on an ongoing basis and concludes with suggestions for further improvement.
 
 # Data extraction
 
@@ -27,14 +27,14 @@ In recent years, at least 90% of the total value of the global CVA estimate was 
 | Value of sub-grants provided for CVA | The value captured under other provided data on CVA in the survey that was provided as sub-grant to another implementing agency. |
 | Comments | Any relevant caveats to or comments on the provided data, including on possible reasons for increases or decreases in volumes. We also request the breakdown of provided or received sub-grants for CVA so that we can avoid double-counting across different survey respondents. |
 
-The main difference between the minimum agreements on tracking CVA and our survey is the inclusion of sub-grant data. This is because it is common practice for a large recipient of funding for CVA from government donors (e.g., WFP, or UNHCR) to then sub-grant all or aspects of the delivery of that CVA to recipients to another implementing agency. Given we request data from those large actors as well as smaller agencies that receive funding from them, we need the sub-grant data to ensure that there is no double-counting across survey data from both ([see below](#global-estimated-volumes-of-humanitarian-cva)).
+The main difference between the minimum agreements on tracking CVA and our survey is the inclusion of sub-grant data. This is because it is common practice for a large recipient of funding for CVA from government donors (e.g., WFP, or UNHCR) to then sub-grant all or aspects of the delivery of that CVA to recipients to another implementing agency. Given we request data from those large actors as well as smaller agencies that receive funding from them, we need the sub-grant data to ensure that there is no double-counting across survey data from both ([see below](#global-estimated-volumes-of-humanitarian-cva)). Sub-grant data also provides on means of being able to track funding for CVA that is implemented by local and national organisations.
 
 
 ## Financial Tracking Service
 
 The [Financial Tracking Service](https://fts.unocha.org/) (FTS) by UN OCHA is the most comprehensive source of global humanitarian financing flows in close to real time. It was originally set up to track progress on the funding requirements of UN-coordinated humanitarian response plans, but has since expanded its ambition to track all international humanitarian funding flows whether in- or outside of those plans.
 
-The central data element of the FTS data structure is the financial flow between organisations. These financial flows have characteristics assigned to them at the source and destination (e.g., organisation, location, cluster, or year) on where there are from or to and more, and in addition have a set of characteristics that are central to that flow (e.g., the flow status on whether it is pledged, committed or paid, whether it is a financial flow or in-kind support, or what aid modality the financial flow supports). Some of those characteristics are more comprehensively reported on than others.
+The central data element of the FTS data structure is the financial flow between organisations. These financial flows have characteristics assigned to them on their source and destination (e.g., organisation, location, cluster, or year), and in addition have a set of characteristics that are central to that flow (e.g., the flow status on whether it is pledged, committed or paid, whether it is a financial flow or in-kind support, or what aid modality the financial flow supports). Some of those characteristics are more comprehensively reported on than others.
 
 Before identifying the FTS data that is relevant to CVA, we first have to extract the financial flows data from FTS. 
 
@@ -120,7 +120,7 @@ return(flows)
 
 </details>
 
-The following function will be required to split FTS flows that run across different years by each year, assuming an even distribution over time:
+The following function will be required to split FTS flows that run across different years by each year, assuming an even distribution over time (the distribution of these instances of multi-year funding across years may not be even in practice, but this assumption is made in the absense of annualised data to be able to account for this funding in each year it spans across without double counting):
 
 <details>
 
@@ -146,7 +146,7 @@ fts_split_rows <- function(data, value.cols = "amountUSD", split.col = "destinat
 
 </details>
 
-The splitting of rows by year was necessary to deflate funding amounts by year later in the next step:
+The splitting of rows by year was necessary to deflate funding amounts by year later in the next step (for more detail on the reasoning behind deflating and possible applications [see below](#deflators):
 
 <details>
 
@@ -683,6 +683,8 @@ The easiest way to access and check this data would be through the [IATI datasto
 
 Running this search would yield all IATI activities where publishers have included either the CVA aid type as flag for the activity or a CVA aid type as characteristic of any transaction related to that activity.
 
+Given the very few instances of intended applications of the cash and voucher modality codelist in IATI, there is not IATI data used in the current version of this methodology for quantifying humanitarian cash and voucher assistance. It is included in this guide given its potential for accurately tracking transfers to recipients should the uptake of transaction-level reporting of cash and voucher assistance by implementing agencices to IATI improve in future.
+
 ## WFP CASHboard Analytics
 
 The World Food Programme (WFP) maintains its own online dashboard of what it describes as ‘cash-based transfers and commodity vouchers’ with data on WFP’s CVA operations from 2018 to, at the time of writing, 2024\. This crucially includes a breakdown of data by country, which is not evident from the global CVA data collected from WFP (and all other CALP Network members) via survey. It can therefore be useful to incorporate for analysis disaggregated by country, but is not currently used in the global calculation of humanitarian CVA volumes.
@@ -1189,7 +1191,7 @@ fwrite(project_text, "projects/project_text.csv")
 
 ## Combining FTS and projects module CVA data
 
-Now that we have isolated the **planned** project budget percentage for cash/vouchers/CVA for projects with available data, we can use the unique project IDs to merge this information with FTS funding flow data to the same projects. We thereby make the assumption that the delivered share of CVA of the received funding for each project matches that of the planned CVA project budget share.
+Now that we have isolated the **planned** project budget percentage for cash/vouchers/CVA for projects with available data, we can use the unique project IDs to merge this information with FTS funding flow data to the same projects. We thereby make the assumption that the delivered share of CVA of the received funding for each project matches that of the planned CVA project budget share. However, in countries where country-level data disaggregated by cluster or implementing agency is available on the actual volumes of CVA delivered (usually from cash working groups), this can serve as useful check for whether this CVA data from the planning stage provides an over- or under-estimate in the given country of interest ([see below](#suggestions-for-future-improvements)). 
 
 We also import the project text for projects that received funding on FTS and combine it with the FTS description, which tends to be brief. This will provide more text data for the machine learning algorithm later on to classify the CVA relevance ([see below](#machine-learning-to-classify-cva-flow-descriptions)).
 
@@ -1261,7 +1263,7 @@ There are several possible ways to identify financial flows on FTS relevant to C
 
 1. The ‘method’ column: this can contain either ‘Traditional aid’ as default value or, if reported to FTS, ‘Cash transfer programming (CTP)’. There are however a number of flows that evidently support CVA as per the other methods of identifying relevant FTS data, indicating that this reporting field is unfortunately not in consistent use.  
 2. The ‘destinationObjects\_Cluster.name’ column: this is a free-text field that represents the field cluster. It can be in English, French or Spanish. A number of response-plans include a multi-purpose cash cluster, which would be listed in this field, though in a number of different spellings or languages (though always the same spelling and language for the same response plan in the same year). Relevant clusters identified up until 2023 are listed in the 08\_fts\_keyword\_searching\_cash.R code chunk from lines 98 up to 119 and need to be maintained every year to check for updates.  
-3. The ‘project\_cva\_percentage’ column: This has been added from the projects dataset and represents the planned budget percentage of CVA for the project supported by this financial flow.  
+3. The ‘project\_cva\_percentage’ column: This has been added from the projects dataset ([see above](#projects-module)) and represents the planned budget percentage of CVA for the project supported by this financial flow.  
 4. The ‘all\_text’ column: this is a free-text field that often contains a description of the activity supported by the financial flow (merged from the flow description and project text). This can be scanned for CVA keywords and then classified by a machine learning algorithm for its CVA relevance ([see below](#machine-learning-to-classify-cva-flow-descriptions)).
 
 In the existing methodology, the choice was made to distinguish for each FTS financial flow whether its CVA relevance is full, partial or nonexistent. This was in recognition of a number of large financial flows, especially from the US, that as per their description supported a range of activities including CVA alongside other modalities. It would therefore be an overestimate to count the full value of those flows towards CVA and they are marked as partial. Financial flows with no identifiable CVA characteristics as per the three criteria listed above were marked as not relevant.
@@ -1494,15 +1496,15 @@ fwrite(fts_flagged, "output/fts_output_CVA.csv")
 
 ### Calculating the CVA-relevant funding amounts
 
-Finally, what remains is to calculated the estimated CVA US$ amount in terms of total programming costs supported by each financial flow in the dataset. Given, as described above, FTS captures financial flows between organisations (i.e., from donors to implementers, or more rarely sub-grants from one implementer to another), instances of funding to CVA projects that are classified as ‘Full’ and thereby fully included in terms of their CVA amounts also include programming costs. For financial flows with planning information on the share of the project budget for CVA, it is possible that those shares represent transfer values only. However, it is not straightforward to ascertain this, given the CVA project questions are often ambiguously worded and do not explicitly ask for the share of CVA in terms of transfer value or programming costs. The many instances of projects indicating CVA project budget shares of 90% or higher suggest that at least some organisations interpret this question to also refer to programming costs. This methodology therefore assumes that instances of funding on FTS to CVA include transfers and overall CVA programming costs, whether counted fully or partially according to the logic laid out below.
+Finally, what remains is to calculate the estimated CVA US$ amount in terms of total programming costs supported by each financial flow in the dataset. Given, as described above, FTS captures financial flows between organisations (i.e., from donors to implementers, or more rarely sub-grants from one implementer to another), instances of funding to CVA projects that are classified as ‘Full’ and thereby fully included in terms of their CVA amounts also include programming costs. For financial flows with planning information on the share of the project budget for CVA, it is possible that those shares represent transfer values only. However, it is not straightforward to ascertain this, given the CVA project questions are often ambiguously worded and do not explicitly ask for the share of CVA in terms of transfer value or programming costs. The many instances of projects indicating CVA project budget shares of 90% or higher suggest that at least some organisations interpret this question to also refer to programming costs. This methodology therefore assumes that instances of funding on FTS to CVA include transfers and overall CVA programming costs, whether counted fully or partially according to the logic laid out below.
 
 The logical steps for calculating CVA amounts are laid out as follows:
 
 1. Including the full current USD amount if ‘method’ is reported as ‘Cash transfer programming (CTP)’, or if there is only one destination field cluster and that is relevant to CVA (usually multi-purpose cash)  
 2. For remaining flows with relevant field clusters, including a proportion of the current USD amount if there are multiple destination field clusters, one of which is relevant to CVA. The proportion is estimated by taking the fraction of one divided by the number of total field clusters reported for that financial flow.  
 3. For remaining flows with CVA project budget shares, including the current USD amount multiplied by those budget shares.  
-4. For remaining flows with a predicted CVA relevance from the machine learning model, including all of the current USD amount if the predicted confidence for CVA relevance is 80% or higher and if the text field includes keywords such as cash/voucher/cva.  
-5. Remaining flows with a predicted CVA relevance from the machine learning model of 50% or higher that do not meet the criteria of the previous step are compiled as list of financial flows that require a manual review of their text field for whether they seem to fully or partially support CVA, or whether they represent false positives, or whether the text is insufficient to make that assessment (then also excluded).
+4. For remaining flows with a predicted CVA relevance from the machine learning model, including all of the current USD amount if the predicted confidence for CVA relevance is 80% or higher and if the text field includes keywords such as cash/voucher/cva.
+5. Remaining flows with a predicted CVA relevance from the machine learning model of 50% or higher that do not meet the criteria of the previous step are compiled as list of financial flows that require a manual review of their text field for whether they seem to fully or partially support CVA, or whether they represent false positives, or whether the text is insufficient to make that assessment (then also excluded). A sample file with examples of reasoning behind each of these different cases is included in the reference datasets in this repository.
 
 To save time when executing this guide and methodology, the following script already joins the manual review decisions from former DI staff up to 2023 to the file. The remaining flows that have not yet coded and that remain after step 5 need to be then reviewed and classified manually. The following code chunk executes those steps:
 
@@ -2008,13 +2010,15 @@ fwrite(cva_agg_org_type, "output/cva_agg_org_type.csv")
 ```
 </details>
 
+The resulting global total for humanitarian CVA is larger than totals calculated solely based on FTS and projects data. This is primarily due to the inclusion of survey data submitted by implementing agencies on their global organisational total CVA figures, and given those implementing agencies do not comprehensively report on all their volumes of humanitarian CVA to FTS and because projects data is not available for all crisis contexts.
+
 ## CVA data by cluster
 
 There are two main avenues to explore CVA data by cluster with the data compiled in this guide. 
 
 The first involves the FTS CVA dataset generated above. Within that, we could analyse funding for CVA by cluster across a large number of contexts. The ‘destinationObjects\_GlobalCluster.name’ column standardises the field clusters into a set of global clusters and allows for easier analysis (though currently there is no designated ‘multi-purpose cash’ category within that column). However, given none of the possible ways of reporting on CVA to FTS are used comprehensively or consistently, this data will inevitably be partial. It might therefore be harder to use as a basis for advocacy with clusters to change the share of CVA within each cluster if that true share is only partially known.
 
-The second possible way involves using the project planned budget data ([see above](#projects-module-cva-fields)). Thie has the advantage that it provides a complete account of planning figures for each HRP with available data (usually over 20 plans each year). This should therefore provide information with fairly high confidence about the planned significance of CVA by cluster in those response plans. This data would be available alongside information on which organisations or organisation types plan for smaller or greater shares of CVA within their activities, and what those activities are. It also has the advantage for being planning data that it can be used for forward-looking advocacy on activities that are yet to be implemented, unlike most other CVA data, which is mostly retrospective.
+The second possible way involves using the project planned budget data ([see above](#projects-module-cva-fields)) before it is combined with FTS data. Thie has the advantage that it provides a complete account of planning figures for each HRP with available data (usually over 20 plans each year). This should therefore provide information with fairly high confidence about the planned significance of CVA by cluster in those response plans. This data would be available alongside information on which organisations or organisation types plan for smaller or greater shares of CVA within their activities, and what those activities are. It also has the advantage for being planning data that it can be used for forward-looking advocacy on activities that are yet to be implemented, unlike most other CVA data, which is mostly retrospective.
 
 ## CVA data by country
 
@@ -2030,9 +2034,15 @@ Another possible avenue for CVA data analysis by country is to collate context-s
 
 There tends to be interest, especially from within the CALP Network, on what share of international humanitarian assistance (IHA) is delivered as CVA. Calculating this is currently flawed and only a best estimate given it involves comparing financial inputs to the humanitarian system with its outputs (with CVA a delivery modality). Given the lack of comprehensive public reporting on how much and when humanitarian activities funding from international funding deliver CVA, there is no sufficient data to connect the two. There can also likely be a mismatches (both ways) of funding being disbursed by a donor in one year and it being delivered as CVA in another, making it harder to compare data on financial inputs and outputs in the same year.
 
-Still, given the demand for this calculation, the method used so far to do it was to take the global CVA estimate for programming costs produced in this guide ([see above](#global-estimated-volumes-of-humanitarian-cva)) and to divide it by the best possible estimate of IHA available for each year. This also requires first excluding some CVA survey data that would not be included by IHA funding data (e.g. CVA delivered domestically by RCRC national societies in donor countries).
+Still, given the demand for this calculation, the method used so far to do it was to take the global CVA estimate for programming costs produced in this guide ([see above](#global-estimated-volumes-of-humanitarian-cva)) and to divide it by the best possible estimate of IHA available for each year. This also requires first excluding some CVA survey data that would not be included by IHA funding data, which currently is humanitarian CVA delivered domestically in countries that are international humanitarian net donors. Currently, the two known instances of that in this methodology are CVA delivered by RCRC national societies in their respective (donor) countries and humanitarian CVA delivered by GiveDirectly domestically in the US. The breakdown of the CVA transfer value data submitted by the RCRC Movement via survey is available at the [RCRC Cash Hub](https://cash-hub.org/resources/cash-maps/) and amounts delivered in donor countries need to be calculated manually for years with available data. These years can then serve as estimate for years withouta a publicly available breakdown of CVA by national society. Data on the breakdown of humanitarian CVA delivered domestically in the US and internationally was in the past provided by GiveDirectly for some years.
 
 The IHA figures used are those calculated by DI, which are partly based on a labour-intensive process to compile data on private humanitarian funding alongside an analysis of donor funding amounts based on mostly DAC data for DAC member donors and otherwise FTS data for other donors. IHA figures need to be converted to current prices to be comparable to CVA figures, which have not been deflated in this methodology ([see above](#deflators)). The historical IHA data in current prices calculated by DI is provided alongside this guide to aid calculating this percentage.
+
+The estimated relative share of CVA as percentage of total IHA can then be calculated by:
+
+1. Taking the global volumes of humanitarian CVA calculated [above](#global-estimated-volumes-of-humanitarian-CVA).
+2. Subtracting from that humanitarian CVA amounts delivered in countries that are net humanitarian donors as explained in this section of the guide. This is because those amounts would not be included in the denominator (which represents **international** humanitarian assistance).
+3. Dividing for each year the resulting value of global humanitarian CVA by the total volumes of IHA in current prices.
 
 # Methodological limitations
 
@@ -2055,5 +2065,5 @@ Related to humanitarian CVA and not covered in this guide, there still is a blin
 Other, technical improvements to the above guide might include:
  
 * Changing the sequence of logical steps for CVA amount calculation depending on what way of reporting on CVA to FTS or the projects module is deemed to be most/least reliable ([see above](#calculating-the-cva-relevant-funding-amounts))
-* Triangulating the robustness of planned CVA project budget shares for specific countries with data from CWGs if available  
+* Triangulating the robustness of planned CVA project budget shares for specific countries with data from CWGs on CVA delivered by agency/cluster if available. Depending on the analysis focus and if the required data is available from cash working groups in the country/countries of interest directly, it might be more comprehensive in those instances to rely on data of actual CVA transfers in those countries over estimates based on partial FTS and planned project data.
 * Adjusting CVA financial volumes for inflation, given the time horizon of the global analysis is approaching one decade and therefore increases in prices over that entire time period inflate the growing significance of CVA within humanitarian responses as those become more expensive. However, the choice of deflators would likely be arbitrary and flawed. ([see above](#relative-share-of-cva-as--of-iha))
