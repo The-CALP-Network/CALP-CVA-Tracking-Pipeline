@@ -120,7 +120,7 @@ return(flows)
 
 </details>
 
-The following function will be required to split FTS flows that run across different years by each year, assuming an even distribution over time (the distribution of these instances of multi-year funding across years may not be even in practice, but this assumption is made in the absense of annualised data to be able to account for this funding in each year it spans across without double counting):
+The following function will be required to split FTS flows that run across different years by each year, assuming an even distribution over time (the distribution of these instances of multi-year funding across years may not be evenly distributed in practice, but this assumption is made in the absense of annualised data to be able to account for this funding in each year it spans across without double counting):
 
 <details>
 
