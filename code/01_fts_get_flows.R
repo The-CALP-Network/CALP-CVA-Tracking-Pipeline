@@ -1,10 +1,3 @@
-#Description: Access FTS API to get flows data. 
-#Original Author: Dan Walton
-#Creation date: Feb 2021
-#Modified by: Alex Miller
-#Last revision: Jan 2025
-#Notes: Specifying at least a year is recommended. Option to unnest output (recommended) is included. This process will take time with large downloads.
-
 fts_get_flows <- function(year = NULL, planid = NULL, emergencyid = NULL, globalclusterid = NULL, destinationlocationid = NULL, unnest = T){
   lapply(c("data.table", "jsonlite", "httr"), require, character.only=T)
   if(!is.null(year)){
