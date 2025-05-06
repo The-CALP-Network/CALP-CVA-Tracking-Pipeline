@@ -29,7 +29,7 @@ getCurrentFileLocation <- function() {
   return(dirname(this_file))
 }
 
-fts_curated_flows <- function(years = 2017:2024, update_years = NA, dataset_path = "fts", base_year = 2022, weo_ver = NULL) {
+fts_curated_flows <- function(years = 2017:2024, update_years = 2024, dataset_path = "fts", base_year = 2022, weo_ver = NULL) {
   
   code_dir <- getCurrentFileLocation()
   source(paste(code_dir, "01_fts_get_flows.R", sep="/"))
