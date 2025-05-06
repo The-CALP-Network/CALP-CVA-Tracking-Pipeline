@@ -1,5 +1,5 @@
 get_deflators <- function(base_year = 2021, currency = "USD", weo_ver = NULL, approximate_missing = T){
-  suppressPackageStartupMessages(lapply(c("data.table", "httr", "jsonlite","lubridate"), require, character.only=T))
+  suppressPackageStartupMessages(lapply(c("data.table", "httr", "jsonlite","lubridate","readxl"), require, character.only=T))
   
   if(!dir.exists("weo")){
     dir.create("weo")
@@ -21,11 +21,17 @@ get_deflators <- function(base_year = 2021, currency = "USD", weo_ver = NULL, ap
   weo_year <- year(pweo_ver)
   weo_month <- month(pweo_ver)
   weo_month_text <- as.character(lubridate::month(pweo_ver,label = TRUE, abbr = FALSE))
-  weo_filename = paste0("weo/",weo_ver ,"all.xls")
+  weo_filename = paste0("weo/",weo_ver ,"all.xlsx")
+  message("🔍 Checking for file: ", weo_filename)
+  message("file.exists(): ", file.exists(weo_filename))
   if(!file.exists(weo_filename)){
+    message("✅ File does NOT exist, entering download block.")  # 👈 Add this here
     while(T){
       url <- paste0("https://www.imf.org/-/media/Files/Publications/WEO/WEO-Database/", weo_year,"/",weo_month_text, "/WEO", weo_ver ,"all.ashx")
+      message("Trying URL: ", url)
       response <- GET(url)
+      message("Content-Type: ", response$headers$`content-type`)
+      message("Status Code: ", response$status_code)
       if(response$headers$`content-type` == "application/vnd.ms-excel") break
       
       if(weo_month <= 10 & weo_month > 4){
@@ -43,7 +49,8 @@ get_deflators <- function(base_year = 2021, currency = "USD", weo_ver = NULL, ap
   
   message("Using IMF WEO version ", weo_ver, ".")
   
-  weo <- read.delim(weo_filename,sep="\t",na.strings=c("","n/a","--"),check.names=F, fileEncoding="utf-16")
+  weo <- read_excel(weo_filename)
+  weo[weo == "" | weo == "n/a" | weo == "--"] <- NA
   weo = data.table(weo)
   country_codes <- unique(weo[, .(ISO, Country)])
   country_codes = country_codes[complete.cases(country_codes),]
