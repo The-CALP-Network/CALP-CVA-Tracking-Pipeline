@@ -39,6 +39,8 @@ project_metadata$project_id = as.character(project_metadata$project_id)
 project_text = fread("projects/project_text.csv")
 project_text$text = paste(project_text$project_name, project_text$project_objective)
 project_text[,c("project_name", "project_objective")] = NULL
+project_text$project_id <- as.character(project_text$project_id)
+project_metadata$project_id <- as.character(project_metadata$project_id)
 project_data = merge(project_text, project_metadata, all=T)
 names(project_data) = c("destinationObjects_Project.id", "project_text", "project_cva_percentage", "project_cva")
 setdiff(unique(fts$destinationObjects_Project.id), unique(project_data$destinationObjects_Project.id))
