@@ -1,9 +1,3 @@
-# ! pip install datasets evaluate transformers accelerate huggingface_hub --quiet
-
-# from huggingface_hub import login
-
-# login()
-
 import types
 from datasets import load_dataset, Dataset
 from transformers import (
@@ -11,7 +5,8 @@ from transformers import (
     AutoModelForSequenceClassification,
     DataCollatorWithPadding,
     TrainingArguments,
-    Trainer
+    Trainer,
+    EarlyStoppingCallback
 )
 import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
@@ -122,7 +117,11 @@ dataset = dataset.class_encode_column('class_label').train_test_split(
     shuffle=True,
     seed=42
 )
-dataset.remove_columns("class_label")
+
+def preprocess_function(examples):
+    return tokenizer(examples['text'], truncation=True)
+
+dataset = dataset.map(preprocess_function, remove_columns=['id', 'class_label'])
 
 unique_labels = [
     "Partial",
@@ -131,23 +130,15 @@ unique_labels = [
 id2label = {i: label for i, label in enumerate(unique_labels)}
 label2id = {id2label[i]: i for i in id2label.keys()}
 
-def preprocess_function(examples):
-    return tokenizer(examples['text'], truncation=True)
-
-dataset = dataset.map(preprocess_function, remove_columns=['id'])
-
 weight_list = list()
 total_rows = dataset['train'].num_rows + dataset['test'].num_rows
 print("Weights:")
-for label in unique_labels:
-    label_idx = label2id[label]
-    positive_filtered_dataset = dataset.filter(lambda example: example['label'] == label_idx)
-    pos_label_rows = positive_filtered_dataset['train'].num_rows + positive_filtered_dataset['test'].num_rows
-    label_weight = total_rows / pos_label_rows
-    weight_list.append(label_weight)
-    print("{}: {}".format(label, label_weight))
+count = Counter(df['label'])
+total_rows = sum(count.values())
+weight_list = [total_rows / count[label2id[label]] for label in unique_labels]
 
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 weights = torch.tensor(weight_list)
 weights = weights.to(device)
 
@@ -164,24 +155,29 @@ model = AutoModelForSequenceClassification.from_pretrained(
     num_labels=len(id2label.keys()), 
     id2label=id2label,
     label2id=label2id
-)
+).to(device)
 model.forward = types.MethodType(weighted_forward_bert, model)
 model.class_weights = weights
 
 training_args = TrainingArguments(
-    'cva-flow-weighted-classifier2',
-    learning_rate=4e-5, # This can be tweaked depending on how loss progresses
-    per_device_train_batch_size=32, # These should be tweaked to match GPU VRAM
-    per_device_eval_batch_size=32,
+    output_dir='cva-flow-weighted-classifier2',
+    learning_rate=2e-5,
+    warmup_ratio=0.1,
+    per_device_train_batch_size=16,
+    per_device_eval_batch_size=16,
+    gradient_accumulation_steps=2,
     num_train_epochs=10,
-    weight_decay=0.01,
+    weight_decay=0.05,
     evaluation_strategy='epoch',
     save_strategy='epoch',
     logging_strategy='epoch',
     load_best_model_at_end=True,
     push_to_hub=False,
-    save_total_limit=5,
-    report_to="tensorboard",
+    save_total_limit=2,
+    report_to=None,
+    fp16=True,
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False,
 )
 
 trainer = Trainer(
@@ -192,7 +188,9 @@ trainer = Trainer(
     tokenizer=tokenizer,
     data_collator=data_collator,
     compute_metrics=compute_metrics,
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=2)]
 )
 
 trainer.train()
-trainer.push_to_hub()
+trainer.save_model("cva-flow-weighted-classifier2/best_model")
+tokenizer.save_pretrained("cva-flow-weighted-classifier2/best_model")

@@ -1,97 +1,166 @@
-list.of.packages <- c("data.table", "jsonlite","tidyverse", "stringr")
-new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
-if(length(new.packages)) install.packages(new.packages)
-suppressPackageStartupMessages(lapply(list.of.packages, require, character.only=T))
+# 09_calculate_cva.R
+# Calculates the estimated CVA USD amount for each flagged FTS flow using a
+# priority hierarchy:
+#
+# 1. Sector / method / cluster — Full or Partial (÷ cluster count)
+# 2. Project CVA percentage — for flows not already assigned in step 1
+# 3. High-confidence ML — ≥80 % confidence + common cash keyword
+# 4. Prior manual decisions — from reference_datasets/historical_cva_decisions.csv
+# 5. New manual queue — written to output/cva_to_manually_classify.csv
+# (read back when output/cva_manually_classified.csv exists)
+#
+# Bug fixes vs. original:
+# • CVAamount_type label is saved BEFORE CVAamount is updated (index reuse bug)
+# • CTP flows cannot be downgraded to Partial (fixed in 08a)
+# • relevance and sector_method_cluster_relevance are now consistent (fixed in 08a)
+#
+# Outputs:
+# output/cva_to_manually_classify.csv — flows awaiting manual review
+# output/fts_cva.csv — final dataset with CVAamount column
+#
+# Run from the project root:
+# Rscript code/09_calculate_cva.R
 
-getCurrentFileLocation <-  function()
-{
-  this_file <- commandArgs() %>% 
-    tibble::enframe(name = NULL) %>%
-    tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
-    dplyr::filter(key == "--file") %>%
-    dplyr::pull(value)
-  if (length(this_file)==0)
-  {
-    this_file <- rstudioapi::getSourceEditorContext()$path
-  }
-  return(dirname(this_file))
-}
+source("code/util/utils.R")
+enforce_project_root()
+load_packages("data.table")
 
-setwd(getCurrentFileLocation())
-setwd("..")
+if (!dir.exists("output"))
+  dir.create("output")
 
-fts_flagged = fread("output/fts_output_CVA.csv")
-fts_flagged$amountUSD = as.numeric(fts_flagged$amountUSD)
-# Count the number of destination clusters
-fts_flagged$destinationClusterCount = str_count(fts_flagged$destinationObjects_Cluster.name,";") + 1
-fts_flagged$destinationClusterCount[which(fts_flagged$destinationObjects_Cluster.name=="")] = 0
+fts_flagged <- fread("output/fts_output_CVA.csv")
+fts_flagged[, amountUSD := as.numeric(amountUSD)]
 
-# CVAamount for full is entire amountUSD
-fts_flagged$CVAamount = 0
-fts_flagged$CVAamount_type = ""
-fts_flagged$CVAamount[which(fts_flagged$sector_method_cluster_relevance=="Full")] = 
-  fts_flagged$amountUSD[which(fts_flagged$sector_method_cluster_relevance=="Full")]
-fts_flagged$CVAamount_type[which(fts_flagged$sector_method_cluster_relevance=="Full")] = "Sector, method, cluster"
+# Initialise CVAamount columns
+fts_flagged[, `:=`(CVAamount = 0, CVAamount_type = "")]
 
-# CVAamount for partial is amountUSD divided by the number of destination clusters
-fts_flagged$CVAamount[which(fts_flagged$sector_method_cluster_relevance=="Partial")] = 
-  fts_flagged$amountUSD[which(fts_flagged$sector_method_cluster_relevance=="Partial")] /
-  fts_flagged$destinationClusterCount[which(fts_flagged$sector_method_cluster_relevance=="Partial")]
-fts_flagged$CVAamount_type[which(fts_flagged$sector_method_cluster_relevance=="Partial")] = "Partial cluster"
+# Step 1: Full sector / method / cluster
+idx <- fts_flagged$sector_method_cluster_relevance == "Full"
+fts_flagged[idx, `:=`(CVAamount = amountUSD, CVAamount_type = "Sector, method, cluster")]
 
+# Step 2: Partial sector / cluster (÷ number of destination clusters)
+idx <- fts_flagged$sector_method_cluster_relevance == "Partial"
+fts_flagged[idx, `:=`(CVAamount = amountUSD / destinationClusterCount,
+                      CVAamount_type = "Partial cluster")]
 
-# CVAamount for projects with reported CVA percentages
-fts_flagged$CVAamount[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))] = 
-  fts_flagged$amountUSD[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))] *
-  fts_flagged$project_cva_percentage[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))]
-fts_flagged$CVAamount_type[which(fts_flagged$CVAamount == 0 & !is.na(fts_flagged$project_cva_percentage))] = "Project CVA percentage"
+# Step 3: Project CVA percentage
+# Bug fix: capture the qualifying index BEFORE updating CVAamount so the
+# type label uses the same set of rows as the amount assignment.
+idx <- which(fts_flagged$CVAamount == 0 &
+               !is.na(fts_flagged$project_cva_percentage))
+fts_flagged[idx, `:=`(CVAamount = amountUSD * project_cva_percentage,
+                      CVAamount_type = "Project CVA percentage")]
 
-# CVAamount for flows with highly likely CVA predicted relevance and common words
-fts_flagged$common_words_match = grepl("\\bcash\\b|\\bvoucher\\b|\\bvouchers\\b|\\bcva\\b|\\bcoupon\\b", fts_flagged$all_text, ignore.case=T)
-high_confidence_index = which(fts_flagged$CVAamount == 0 & fts_flagged$predicted_confidence >= 0.8 & fts_flagged$common_words_match)
-fts_flagged$CVAamount[high_confidence_index] = 
-  fts_flagged$amountUSD[high_confidence_index]
-fts_flagged$CVAamount_type[high_confidence_index] = "ML high predicted relevance"
+# Step 4a: High-confidence Full ML prediction + common keyword
+COMMON_KW_REGEX <- "\\b(cash|vouchers?|cva|coupon)\\b"
+fts_flagged[, common_words_match :=
+              grepl(COMMON_KW_REGEX, all_text, ignore.case = T)]
 
-
-# For remaining flows with CVAamount of zero that have predicted_confidence >= 0.5 and not (< 0.8 & common_word_match)
-# go to manual 
-manual_classify_index = which(
+idx <- which(
   fts_flagged$CVAamount == 0 &
-    fts_flagged$predicted_confidence >= 0.5 &
-    !(fts_flagged$predicted_confidence >= 0.8 & fts_flagged$common_words_match)
+    !is.na(fts_flagged$predicted_confidence) &
+    fts_flagged$predicted_confidence >= 0.8 &
+    fts_flagged$common_words_match
 )
-fts_manual = fts_flagged[manual_classify_index,]
-fts_manual$CVAamount_type = "Manual"
-# Read last manual file
-fts_prior_manual = fread("reference_datasets/Mike_cva_decisions.csv")
-positive_ids = subset(fts_prior_manual, decision %in% c("Decision: accept; judgement", "Decision: include; judgement"))
+fts_flagged[idx, `:=`(CVAamount = amountUSD, CVAamount_type = "ML high predicted relevance")]
 
-# Write out those that have not been previously manually reviewed
-fts_manual_uncoded = subset(fts_manual, !id %in% fts_prior_manual$id)
-fwrite(fts_manual_uncoded, "output/cva_to_manually_classify.csv")
+# Step 4b: High-confidence Partial ML prediction + common keyword (apply average proportion from known partials)
+COMMON_KW_REGEX <- "\\b(cash|vouchers?|cva|coupon)\\b"
+fts_flagged[, common_words_match :=
+              grepl(COMMON_KW_REGEX, all_text, ignore.case = T)]
 
-# Treat those that have been manually reviewed as Full. Enhance training data
-fts_flagged_manual_full = subset(fts_flagged, id %in% positive_ids$id)
-fts_flagged_manual_full = fts_flagged_manual_full[,c("id", "all_text")]
-setnames(fts_flagged_manual_full, "all_text", "text")
-fts_flagged_manual_full$label = 1
-classifier_data = read.csv("classifier_code/CVA_flow_descriptions.csv")
-fts_flagged_manual_full = subset(fts_flagged_manual_full, !id %in% classifier_data$id)
-fts_flagged_manual_full = subset(fts_flagged_manual_full, !text %in% classifier_data$text)
-classifier_data = rbind(classifier_data, fts_flagged_manual_full)
-write.csv(classifier_data, "classifier_code/CVA_flow_descriptions.csv", row.names=F)
-fts_flagged$CVAamount[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)] =
-  fts_flagged$amountUSD[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)]
-fts_flagged$CVAamount_type[which(fts_flagged$CVAamount == 0 & fts_flagged$id %in% positive_ids$id)] = "Manual"
+idx <- which(
+  fts_flagged$CVAamount == 0 &
+    !is.na(fts_flagged$predicted_confidence) &
+    fts_flagged$predicted_confidence <= 0.2 &
+    fts_flagged$common_words_match
+)
 
-# Manual file is filled out prior to this step
-fts_flagged_output = subset(fts_flagged, CVAamount > 0 & is.finite(CVAamount))
-if(file.exists("output/cva_manually_classified.csv")){
-  fts_manually_classified = fread("output/cva_manually_classified.csv")
-  fts_cva = rbind(fts_flagged_output, fts_manually_classified)
-}else{
-  fts_cva = fts_flagged_output
+partial_share <- fts_flagged[grepl("Partial", relevance), sum(CVAamount)/sum(amountUSD)]
+
+fts_flagged[idx, `:=`(CVAamount = amountUSD*partial_share, CVAamount_type = "ML high predicted partial relevance")]
+
+# Step 5a: Prior manual decisions
+POSITIVE_DECISIONS <- c("Decision: accept; judgement", "Decision: include; judgement")
+
+prior_manual_file <- "reference_datasets/historical_cva_decisions.csv"
+if (file.exists(prior_manual_file)) {
+  prior_manual <- fread(prior_manual_file)
+  
+  # Warn if any unrecognised decision strings exist — silent drops are a risk
+  known_decisions <- unique(prior_manual$decision)
+  unexpected <- setdiff(
+    known_decisions,
+    c(
+      POSITIVE_DECISIONS,
+      "Decision: exclude; judgement",
+      "Decision: insufficient text; judgement",
+      "Decision: false positive; judgement"
+    )
+  )
+  if (length(unexpected))
+    warning(
+      "Unrecognised decision label(s) in ",
+      prior_manual_file,
+      ": ",
+      paste(unexpected, collapse = ", "),
+      "\n These rows will be EXCLUDED from CVA totals."
+    )
+  
+  positive_ids <- prior_manual[decision %in% POSITIVE_DECISIONS, id]
+  
+  idx <- which(fts_flagged$CVAamount == 0 &
+                 fts_flagged$id %in% positive_ids)
+  fts_flagged[idx, `:=`(CVAamount = amountUSD, CVAamount_type = "Manual")]
+  
+  # Add confirmed positive examples to classifier training data
+  new_training <- fts_flagged[CVAamount_type == "Manual", .(id, text = all_text)][, label := 1L]
+  classifier_data <- fread("classifier_code/CVA_flow_descriptions.csv")
+  classifier_data[, text := gsub("\"", "", text)]
+  new_training <- new_training[!id %in% classifier_data$id &
+                                 !text %in% classifier_data$text]
+  if (nrow(new_training)) {
+    fwrite(rbindlist(list(classifier_data, new_training), fill = T),
+           "classifier_code/CVA_flow_descriptions.csv", quote = T)
+    message(nrow(new_training),
+            " new training example(s) added to classifier data.")
+  }
+} else {
+  message("No prior manual decisions file found at ",
+          prior_manual_file,
+          " — skipping.")
+  prior_manual <- data.table(id = character(0))
 }
+
+# Step 5b: Queue remaining uncertain flows for manual review
+# Flows with ML score 0.2-0.8 go to a manual review file. 
+# Those already handled by the prior decisions file
+# are excluded.
+manual_queue_idx <- which(
+  fts_flagged$CVAamount == 0 &
+  !is.na(fts_flagged$predicted_confidence) &
+  !fts_flagged$common_words_match &
+  fts_flagged$predicted_confidence > 0.2 &
+  fts_flagged$predicted_confidence < 0.8)
+
+fts_manual_queue <- fts_flagged[manual_queue_idx]
+fts_manual_queue[, CVAamount_type := "Manual"]
+fts_manual_uncoded <- fts_manual_queue[!id %in% prior_manual$id]
+
+fwrite(fts_manual_uncoded, "output/cva_to_manually_classify.csv")
+message(
+  nrow(fts_manual_uncoded),
+  " flow(s) written to output/cva_to_manually_classify.csv for manual review."
+)
+
+fts_cva <- fts_flagged[CVAamount > 0 & is.finite(CVAamount)]
+
+# Summary
+message("\nCVA amount type breakdown:")
+print(fts_cva[, .(flows = .N,
+                  total_CVA_USD = sum(CVAamount, na.rm = T)), by = CVAamount_type][order(-total_CVA_USD)])
 
 fwrite(fts_cva, "output/fts_cva.csv")
+message("\nFinal dataset written to output/fts_cva.csv (",
+        nrow(fts_cva),
+        " flows)")

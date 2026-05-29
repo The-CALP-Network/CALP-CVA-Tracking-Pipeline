@@ -1,341 +1,383 @@
-list.of.packages <- c("data.table","tidyverse", "openxlsx", "stringr", "stringdist")
-new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
-if(length(new.packages)) install.packages(new.packages)
-suppressPackageStartupMessages(lapply(list.of.packages, require, character.only=T))
+# 10_global_cva_analysis.R
+# Aggregates CVA amounts from FTS flows and survey data, removes sub-grant
+# double-counting via multi-strategy name matching, and produces summary
+# tables by organisation and org type.
+#
+# Inputs:
+# output/fts_cva.csv
+# reference_datasets/cva_survey_data.xlsx (sheets: Survey_data, 2, 3)
+# reference_datasets/fts_survey_overlap.csv
+# reference_datasets/cva_org_type.csv
+#
+# Outputs:
+# output/cva_agg.csv — CVA by organisation (de-doubled)
+# output/cva_agg_org_type.csv — CVA by org type × year (de-doubled)
+#
+# Run from the project root:
+# Rscript code/10_global_cva_analysis.R
 
-getCurrentFileLocation <-  function()
-{
-  this_file <- commandArgs() %>% 
-    tibble::enframe(name = NULL) %>%
-    tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
-    dplyr::filter(key == "--file") %>%
-    dplyr::pull(value)
-  if (length(this_file)==0)
-  {
-    this_file <- rstudioapi::getSourceEditorContext()$path
-  }
-  return(dirname(this_file))
+source("code/util/utils.R")
+enforce_project_root()
+load_packages("data.table", "openxlsx", "stringdist")
+
+if (!dir.exists("output"))
+  dir.create("output")
+
+# Load FTS CVA flows
+fts_cva <- fread("output/fts_cva.csv")
+queue <- fread("output/cva_to_manually_classify.csv")
+
+manual_classified_file <- "output/cva_manually_classified.csv"
+if (file.exists(manual_classified_file)) {
+  manual <- fread(manual_classified_file)
+  
+  # Validate schema
+  required_cols <- c("id", "CVAamount", "CVAamount_type")
+  missing_cols <- setdiff(required_cols, names(manual))
+  if (length(missing_cols))
+    stop(
+      "cva_manually_classified.csv is missing columns: ",
+      paste(missing_cols, collapse = ", ")
+    )
+  
+  # Validate amounts
+  bad_amounts <- manual[is.na(CVAamount) |
+                          !is.finite(CVAamount) | CVAamount <= 0]
+  if (nrow(bad_amounts))
+    stop(
+      nrow(bad_amounts),
+      " row(s) in cva_manually_classified.csv have ",
+      "missing or zero CVAamount. IDs: ",
+      paste(bad_amounts$id, collapse = ", ")
+    )
+  
+  # Warn about IDs not traceable to the current queue
+  stale <- manual[!id %in% queue$id, id]
+  if (length(stale))
+    warning(
+      length(stale),
+      " manually classified ID(s) not found in current ",
+      "cva_to_manually_classify.csv — these may be stale:\n ",
+      paste(stale, collapse = ", ")
+    )
+  
+  message(nrow(manual), " manually classified flow(s) incorporated.")
+  
+  # Remove verified rows from the queue so it only contains pending decisions
+  queue_remaining <- queue[!id %in% manual$id]
+  fwrite(queue_remaining, "output/cva_to_manually_classify.csv")
+  
+  message(
+    nrow(queue) - nrow(queue_remaining),
+    " row(s) removed from queue. ",
+    nrow(queue_remaining),
+    " still pending."
+  )
+  
+  fts_cva <- rbindlist(list(fts_cva, manual),
+                       fill = TRUE,
+                       use.names = TRUE)
+} else {
+  warning(nrow(queue), " manual checks still pending.")
 }
 
-setwd(getCurrentFileLocation())
-setwd("..")
+fts_cva <- fts_cva[destinationObjects_Organization.name !=
+                     "International NGOs (Confidential)"]
 
-# Read previous output
-fts_cva = fread("output/fts_cva.csv")
+# Load survey data (three sheets)
+survey_data <- as.data.table(read.xlsx("reference_datasets/cva_survey_data.xlsx", sheet = "Survey_data"))
+sub_grants <- as.data.table(read.xlsx("reference_datasets/cva_survey_data.xlsx", sheet = 2))
+pc_tv_estimate <- as.data.table(read.xlsx("reference_datasets/cva_survey_data.xlsx", sheet = 3))
+setnames(pc_tv_estimate, "CVA.data.year", "Year")
 
-# Exclude large confidental flows
-fts_cva = subset(fts_cva, destinationObjects_Organization.name!="International NGOs (Confidential)")
+survey_data[, Organisation := trimws(Organisation.Reference)]
+survey_data[, PC.USD.m := as.numeric(PC.USD.m)]
+survey_data[, TV.USD.m := as.numeric(TV.USD.m)]
+survey_data[, source := "Survey"]
+survey_data[, newMoney := "FALSE"]
 
-# Reads in the CVA survey data
-survey_data = read.xlsx("reference_datasets/cva_survey_data.xlsx", sheet=1)
-survey_data$Organisation = str_trim(survey_data$Organisation)
-survey_data$PC.USD.m = as.numeric(survey_data$PC.USD.m)
-survey_data$TV.USD.m = as.numeric(survey_data$TV.USD.m)
-sub_grants = read.xlsx("reference_datasets/cva_survey_data.xlsx", sheet=2)
-sub_grants = subset(sub_grants, tolower(Take.out)=="y")
-pc_tv_estimate = read.xlsx("reference_datasets/cva_survey_data.xlsx", sheet=3)
-setnames(pc_tv_estimate, "CVA.data.year", "year")
+sub_grants <- sub_grants[tolower(Take.out) == "y"]
 
-# Reads in the fts_survey_overlap to use as mapping, overlap calculated by survey data automatically
-fts_survey_overlap = fread("reference_datasets/fts_survey_overlap.csv", header=T)
-name_mapping = fts_survey_overlap[,c("destinationObjects_Organization.name", "Survey name")]
-setnames(name_mapping, "Survey name", "Organisation")
-fts_survey_overlap_long = unique(survey_data[,c("Organisation", "Year")])
-fts_survey_overlap_long = merge(fts_survey_overlap_long, name_mapping, by="Organisation", all.x=T)
-# Missing names from mapping
-unique(fts_survey_overlap_long$Organisation[which(is.na(fts_survey_overlap_long$destinationObjects_Organization.name))])
-fts_survey_overlap_long = subset(fts_survey_overlap_long, !is.na(destinationObjects_Organization.name))
-survey_overlap_combinations = paste(fts_survey_overlap_long$destinationObjects_Organization.name, fts_survey_overlap_long$Year)
+# Build FTS ↔ survey organisation name mapping
+fts_survey_overlap <- fread("reference_datasets/fts_survey_overlap.csv", header = T)
+name_mapping <- unique(fts_survey_overlap[, .(destinationObjects_Organization.name, Organisation = `Survey name`)])
 
-# Reads in the attached cva_org_type file so that it can be joined with fts_cva by “destinationObjects_Organization.organizationSubTypes”
-cva_org_type = fread("reference_datasets/cva_org_type.csv")
+# Identify (Organisation, Year) pairs covered by survey → exclude from FTS agg
+survey_years <- unique(survey_data[, .(Organisation, Year)])
+survey_years <- merge(
+  survey_years,
+  name_mapping,
+  by = "Organisation",
+  all.x = T,
+  sort = F,
+  allow.cartesian = T
+)
+
+missing_mapping <- unique(survey_years[is.na(destinationObjects_Organization.name), Organisation])
+if (length(missing_mapping))
+  message("No FTS name mapping for survey orgs: ",
+          paste(missing_mapping, collapse = ", "))
+
+survey_years <- survey_years[!is.na(destinationObjects_Organization.name)]
+survey_overlap_keys <- survey_years[, paste(destinationObjects_Organization.name, Year)]
+
+# Org type lookup
+cva_org_type <- fread("reference_datasets/cva_org_type.csv")
 setnames(cva_org_type, "cva_org_type", "Org_type")
 
-# Aggregate FTS for joining
-fts_cva_agg = fts_cva[,.(PC.USD.m=sum(CVAamount) / 1e6), by=.(
-  year,
+# Aggregate FTS CVA by org × year
+fts_cva_agg <- fts_cva[, .(PC.USD.m = sum(CVAamount, na.rm = T) / 1e6), by = .(
+  Year = as.integer(year),
   newMoney,
   destinationObjects_Organization.name,
   destinationObjects_Organization.organizationSubTypes
 )]
-fts_cva_agg$source = "FTS"
-fts_cva_agg = merge(fts_cva_agg, name_mapping, by="destinationObjects_Organization.name", all.x=T)
-fts_cva_agg = merge(fts_cva_agg, cva_org_type, by="destinationObjects_Organization.organizationSubTypes", all.x=T)
 
-# Remove surveyed years
-fts_cva_agg$org_year = paste(fts_cva_agg$destinationObjects_Organization.name, fts_cva_agg$year)
-fts_cva_agg = subset(fts_cva_agg, !org_year %in% survey_overlap_combinations)
-fts_cva_agg$org_year = NULL
-
-# Impute TV
-fts_cva_agg = merge(fts_cva_agg, pc_tv_estimate, by="year", all.x=T)
-fts_cva_agg$TV.USD.m = fts_cva_agg$PC.USD.m * fts_cva_agg$PC.average.used
-fts_cva_agg$PC.average.used = NULL
-
-# Add FTS to survey CVA
-setnames(
+fts_cva_agg[, source := "FTS"]
+fts_cva_agg <- merge(
   fts_cva_agg,
-  c("year"),
-  c("Year")
+  name_mapping,
+  by = "destinationObjects_Organization.name",
+  all.x = T,
+  sort = F
 )
-survey_data$source = "Survey"
-survey_data$newMoney = "FALSE"
-cva_agg = rbindlist(list(survey_data, fts_cva_agg), fill=T)
-cva_agg$Organisation[which(is.na(cva_agg$Organisation))] = 
-  cva_agg$destinationObjects_Organization.name[which(is.na(cva_agg$Organisation))]
+fts_cva_agg <- merge(
+  fts_cva_agg,
+  cva_org_type,
+  by = "destinationObjects_Organization.organizationSubTypes",
+  all.x = T,
+  sort = F
+)
 
-# Where subgrant recipient is unknown, set it equal to donor name so it is deduplicated
-sub_grants$Recipient.org[which(sub_grants$Recipient.org=="Unknown")] =
-  sub_grants$Donor.org[which(sub_grants$Recipient.org=="Unknown")]
+fts_cva_agg[, Local_type := "International"]
+fts_cva_agg[grepl("National|Local", destinationObjects_Organization.organizationSubTypes), Local_type := "National"]
 
-# Where subgrant recipient type is RCRC and year < 2024, set it equal to donor name
-sub_grants$Recipient.org[which(sub_grants$Recipient.org.type=="RCRC" & sub_grants$Year < 2024)] =
-  sub_grants$Donor.org[which(sub_grants$Recipient.org.type=="RCRC" & sub_grants$Year < 2024)]
+# Remove FTS rows for (org, year) pairs already covered by the survey
+fts_cva_agg[, .key := paste(destinationObjects_Organization.name, Year)]
+fts_cva_agg <- fts_cva_agg[!.key %in% survey_overlap_keys][, .key := NULL]
 
-# Match subgrant names
-quotemeta <- function(string) {
-  str_replace_all(string, "(\\W)", "\\\\\\1")
+
+# Combine FTS and survey
+cva_agg <- rbindlist(list(survey_data, fts_cva_agg),
+                     fill = T,
+                     use.names = T)
+
+# Impute TV from PC using the annual PC→TV ratio
+cva_agg <- merge(
+  cva_agg,
+  pc_tv_estimate,
+  by = "Year",
+  all.x = T,
+  sort = F
+)
+
+cva_agg[is.na(TV.USD.m), TV.USD.m := PC.USD.m*PC.average.used]
+cva_agg[is.na(PC.USD.m), PC.USD.m := TV.USD.m/PC.average.used]
+
+cva_agg[is.na(Organisation), Organisation := destinationObjects_Organization.name]
+
+# Sub-grant name matching
+# Sub-grant recipient names must be matched to organisations in cva_agg so we
+# can subtract the received sub-grant amounts and avoid double-counting.
+# Four strategies in priority order:
+# 1. Exact match (after normalisation)
+# 2. Fuzzy (Levenshtein distance ≤ 20% of string length)
+# 3. Substring A — recipient name is a whole word in org name
+# 4. Substring B — org name is a whole word in recipient name
+# Followed by a small set of manual overrides for the residual cases.
+
+normalise <- function(x)
+  trimws(gsub("\\s+", " ", gsub("[[:punct:]]", " ", tolower(x))))
+quotemeta <- function(x)
+  gsub("(\\W)", "\\\\\\1", x, perl = T)
+
+# Apply recipient substitutions BEFORE normalising
+sub_grants[Recipient.org %in% c("Unknown", "Governments", "NGOs", "Local and national partners"), Recipient.org := Donor.org]
+sub_grants[Recipient.org.type == "RCRC", Recipient.org := Donor.org]
+
+sub_grants[, clean_name := normalise(Recipient.org)]
+sub_grants[clean_name %in% c("unknown", "not provided potentially sensitive"), clean_name := NA_character_]
+
+cva_agg[, clean_org := normalise(Organisation)]
+
+uniq_sub <- na.omit(unique(sub_grants$clean_name))
+uniq_sub <- uniq_sub[uniq_sub != ""]
+uniq_orgs <- na.omit(unique(cva_agg$clean_org))
+uniq_orgs <- uniq_orgs[uniq_orgs != ""]
+
+match_dt <- data.table(
+  subgrant_name = uniq_sub,
+  perfect_match = NA_character_,
+  fuzzy_match = NA_character_,
+  fuzzy_dist = NA_integer_,
+  substr_a_match = NA_character_,
+  substr_b_match = NA_character_
+)
+
+# 1. Exact match
+exact_idx <- match(match_dt$subgrant_name, uniq_orgs)
+match_dt[!is.na(exact_idx), perfect_match := uniq_orgs[na.omit(exact_idx)]]
+message(sprintf(
+  "Exact match: %d / %d (%.0f%%)",
+  sum(!is.na(match_dt$perfect_match)),
+  nrow(match_dt),
+  100 * mean(!is.na(match_dt$perfect_match))
+))
+
+# 2. Fuzzy (Levenshtein, vectorised distance matrix)
+dist_mat <- stringdistmatrix(match_dt$subgrant_name, uniq_orgs, method = "lv")
+allowable <- pmax(ceiling(0.20 * nchar(match_dt$subgrant_name)), 1L)
+
+best_dist <- apply(dist_mat, 1, min)
+best_col <- apply(dist_mat, 1, which.min)
+fuzzy_ok <- best_dist <= allowable
+
+match_dt[fuzzy_ok, `:=`(fuzzy_match = uniq_orgs[best_col[fuzzy_ok]], fuzzy_dist = best_dist[fuzzy_ok])]
+
+# Clear a known incorrect fuzzy hit before reporting
+match_dt[subgrant_name == "drc", fuzzy_match := NA_character_]
+
+message(sprintf(
+  "Fuzzy match: %d / %d (%.0f%%)",
+  sum(!is.na(match_dt$fuzzy_match)),
+  nrow(match_dt),
+  100 * mean(!is.na(match_dt$fuzzy_match))
+))
+
+# 3. Substring A: recipient ⊆ org
+for (i in seq_len(nrow(match_dt))) {
+  regex <- paste0("\\b", quotemeta(match_dt$subgrant_name[i]), "\\b")
+  hits <- which(grepl(regex, uniq_orgs, perl = T))
+  if (length(hits))
+    match_dt[i, substr_a_match := uniq_orgs[hits[which.min(nchar(uniq_orgs[hits]))]]]
+}
+message(sprintf(
+  "Substring A: %d / %d (%.0f%%)",
+  sum(!is.na(match_dt$substr_a_match)),
+  nrow(match_dt),
+  100 * mean(!is.na(match_dt$substr_a_match))
+))
+
+# 4. Substring B: org ⊆ recipient (only for still-unmatched rows)
+still_unmatched <- is.na(match_dt$perfect_match) &
+  is.na(match_dt$fuzzy_match) &
+  is.na(match_dt$substr_a_match)
+
+for (j in seq_along(uniq_orgs)) {
+  regex <- paste0("\\b", quotemeta(uniq_orgs[j]), "\\b")
+  hits <- which(still_unmatched &
+                  grepl(regex, match_dt$subgrant_name, perl = T))
+  if (length(hits))
+    match_dt[hits, substr_b_match := uniq_orgs[j]]
+}
+message(sprintf(
+  "Substring B: %d / %d (%.0f%%)",
+  sum(!is.na(match_dt$substr_b_match)),
+  nrow(match_dt),
+  100 * mean(!is.na(match_dt$substr_b_match))
+))
+
+pct_combined <- 100 * mean(
+  !is.na(match_dt$perfect_match) |
+    !is.na(match_dt$fuzzy_match) |
+    !is.na(match_dt$substr_a_match) |
+    !is.na(match_dt$substr_b_match)
+)
+message(sprintf("Combined: %.0f%%", pct_combined))
+
+# 5. Manual overrides
+set_manual <- function(dt, pattern, target, regex = F) {
+  idx <- if (regex)
+    grepl(pattern, dt$subgrant_name, perl = T)
+  else
+    dt$subgrant_name == pattern
+  dt[idx, perfect_match := target]
 }
 
-remove_punct = function(string){
-  str_replace_all(string, "[[:punct:]]", " ")
+UNRWA_FULL <- paste0("united nations relief and works agency for ",
+                     "palestine refugees in the near east")
+
+set_manual(match_dt, "care bangladesh", "care international")
+set_manual(match_dt, "wfp", "world food programme")
+set_manual(match_dt,
+           "save the childrensave the children",
+           "save the children")
+set_manual(match_dt, "wvi", "world vision international")
+set_manual(match_dt,
+           "world vision|vision mund",
+           "world vision international",
+           T)
+set_manual(match_dt, "acf", "action against hunger")
+set_manual(match_dt, "acf ethiopia", "action against hunger")
+set_manual(match_dt, "action contre la faim espagne", "action against hunger")
+set_manual(match_dt, "cww", "concern worldwide")
+set_manual(match_dt, "dan church aid", "dca")
+set_manual(match_dt, "drc", "danish refugee council")
+set_manual(match_dt, "norwegian refugee council", "nrc")
+set_manual(match_dt, "pin", "people in need")
+set_manual(match_dt, "unrwa", UNRWA_FULL)
+set_manual(match_dt, "unrwa united nations relief and wor", UNRWA_FULL)
+set_manual(match_dt, "the united nations relief and works", UNRWA_FULL)
+set_manual(match_dt, "united nations children s fund", "unicef")
+set_manual(match_dt,
+           "red (cross|crescent)",
+           "red cross and red crescent movement",
+           T)
+set_manual(match_dt, "plan malawi", "plan international")
+set_manual(match_dt,
+           "adra romania",
+           "adventist development and relief agency")
+set_manual(match_dt, "somali cash consortium", "concern worldwide")
+
+# Report any genuinely unresolved names
+unresolved <- match_dt[is.na(perfect_match) & is.na(fuzzy_match) &
+                         is.na(substr_a_match) &
+                         is.na(substr_b_match), .(subgrant_name)]
+if (nrow(unresolved)) {
+  message("Unmatched sub-grant recipients (excluded from de-doubling):")
+  print(unresolved)
 }
 
-collapse_whitespace = function(string){
-  str_replace_all(string, "\\s+", " ")
-}
-sub_grants$clean_name = str_trim(collapse_whitespace(remove_punct(tolower(sub_grants$Recipient.org))))
-sub_grants$clean_name[
-  which(sub_grants$clean_name %in% c("unknown", "not provided potentially sensitive"))
-] = NA
-unique_subgrant_recipients = unique(sub_grants$clean_name)
-unique_subgrant_recipients = unique_subgrant_recipients[which(!unique_subgrant_recipients %in% c(NA, ""))]
-cva_agg$clean_org = str_trim(collapse_whitespace(remove_punct(tolower(cva_agg$Organisation))))
-unique_org_names = unique(cva_agg$clean_org)
-unique_org_names = unique_org_names[which(!unique_org_names %in% c(NA, ""))]
+# Resolve to best single match per recipient
+match_dt[, best_match := perfect_match]
+match_dt[is.na(best_match), best_match := fuzzy_match]
+match_dt[is.na(best_match), best_match := substr_a_match]
+match_dt[is.na(best_match), best_match := substr_b_match]
 
-match_df = data.frame(subgrant_recipient_org=unique_subgrant_recipients)
-match_df$perfect_match_name = NA
-match_df$fuzzy_match_name = NA
-match_df$fuzzy_match_distance = NA
-match_df$substring_a_match_name = NA
-match_df$substring_b_match_name = NA
+org_lookup <- setNames(match_dt$best_match, match_dt$subgrant_name)
+sub_grants[, clean_org := org_lookup[clean_name]]
+sub_grants[, newMoney := "FALSE"]
 
-# Try match on exact name
-for(i in 1:nrow(match_df)){
-  org_name = match_df[i,"subgrant_recipient_org"]
-  if(org_name %in% unique_org_names){
-    match_index = which(unique_org_names==org_name)
-    match_name = unique_org_names[match_index]
-    match_df$perfect_match_name[i] = match_name
-  }
-}
+# Aggregate sub-grant amounts and subtract from recipient totals
+sub_grants_agg <- sub_grants[!is.na(clean_org), .(PC.USD.m_subgrant = sum(Amount.USD, na.rm = T) / 1e6), by = .(clean_org, Year, newMoney)]
 
-# Percentage matched by exact name
-sum(!is.na(match_df$perfect_match_name)) / nrow(match_df)
+cva_agg <- merge(
+  cva_agg,
+  sub_grants_agg,
+  by = c("clean_org", "Year", "newMoney"),
+  all.x = T,
+  sort = F
+)
+cva_agg[is.na(PC.USD.m_subgrant), PC.USD.m_subgrant := 0]
+cva_agg[, PC.USD.m_undoubled := pmax(PC.USD.m - PC.USD.m_subgrant, 0)]
 
-# Match by string distance
-allowable_percentage_difference = 0.20 # 20% of the string
-for(i in 1:nrow(match_df)){
-  org_name = match_df[i,"subgrant_recipient_org"]
-  allowable_difference = ceiling(allowable_percentage_difference * nchar(org_name))
-  allowable_difference = max(allowable_difference, 1) # minimum 1 character
-  distance_vector = stringdist(org_name, unique_org_names)
-  matches_by_distance = which(distance_vector <= allowable_difference)
-  if(length(matches_by_distance) >= 1){
-    distances = distance_vector[matches_by_distance]
-    match_index = matches_by_distance[which.min(distances)] # Shortest distance
-    match_name = unique_org_names[match_index]
-    match_df$fuzzy_match_name[i] = match_name
-    match_df$fuzzy_match_distance[i] = distance_vector[match_index]
-  }
-}
+# Scale the TV deduction using the same PC→TV ratio as above
+cva_agg[, TV.USD.m_subgrant := PC.USD.m_subgrant * PC.average.used]
+cva_agg[, TV.USD.m_undoubled := pmax(TV.USD.m - TV.USD.m_subgrant, 0)]
+cva_agg[, PC.average.used := NULL]
 
-# Percentage matched by distance
-sum(!is.na(match_df$fuzzy_match_name)) / nrow(match_df)
+# Aggregate by org type × year
+cva_agg_org_type <- cva_agg[, .(
+  PC.USD.m = sum(PC.USD.m_undoubled, na.rm = T),
+  TV.USD.m = sum(TV.USD.m_undoubled, na.rm = T)
+), by = .(Year, Org_type, Local_type)]
+setorder(cva_agg_org_type, Year, Org_type, Local_type, -PC.USD.m)
 
-# Joint percentage matched so far
-(
-  sum(!is.na(match_df$perfect_match_name)| !is.na(match_df$fuzzy_match_name))
-) / nrow(match_df)
-
-fuzz = subset(match_df, !is.na(fuzzy_match_name))
-fuzz = fuzz[order(-fuzz$fuzzy_match_distance),]
-View(fuzz[,c("subgrant_recipient_org", "fuzzy_match_name", "fuzzy_match_distance")])
-# Manual fix incorrect fuzzy match
-match_df$fuzzy_match_name[which(match_df$subgrant_recipient_org=="drc")] = NA
-
-# Match on subgrant org being a substring of org
-for(i in 1:nrow(match_df)){
-  org_name = match_df[i,"subgrant_recipient_org"]
-  org_regex = paste0(
-    "\\b",
-    quotemeta(org_name),
-    "\\b"
-  )
-  substring_matches = which(grepl(org_regex, unique_org_names, perl=T))
-  if(length(substring_matches) >= 1){
-    all_matching_names = unique_org_names[substring_matches]
-    name_lengths = nchar(all_matching_names)
-    match_index = substring_matches[which.min(name_lengths)]
-    match_name = unique_org_names[match_index]
-    match_df$substring_a_match_name[i] = match_name
-  }
-}
-
-
-# Percentage matched by substring a
-sum(!is.na(match_df$substring_a_match_name)) / nrow(match_df)
-
-# Joint percentage matched so far
-(
-  sum(!is.na(match_df$perfect_match_name) |
-        !is.na(match_df$fuzzy_match_name) |
-        !is.na(match_df$substring_a_match_name)
-  )
-) / nrow(match_df)
-
-# Match on org being a substring of subgrant org for remaining unmatched
-match_df$unmatched = is.na(match_df$perfect_match_name) &
-  is.na(match_df$fuzzy_match_name) &
-  is.na(match_df$substring_a_match_name)
-
-for(match_index in 1:length(unique_org_names)){
-  match_name = unique_org_names[match_index]
-  match_regex = paste0(
-    "\\b",
-    quotemeta(match_name),
-    "\\b"
-  )
-  substring_matches = which(grepl(match_regex, match_df$subgrant_recipient_org, perl=T))
-  if(length(substring_matches) >= 1){
-    for(i in substring_matches){
-      if(match_df$unmatched[i]){
-        match_df$substring_b_match_name[i] = match_name
-      }
-    }
-  }
-}
-
-
-# Percentage matched by substring b
-sum(!is.na(match_df$substring_b_match_name)) / nrow(match_df)
-
-# Joint percentage matched so far
-(
-  sum(!is.na(match_df$perfect_match_name) |
-        !is.na(match_df$fuzzy_match_name) |
-        !is.na(match_df$substring_a_match_name) |
-        !is.na(match_df$substring_b_match_name)
-  )
-) / nrow(match_df)
-
-# Manual matches
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="care bangladesh")
-] = "care international"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="wfp")
-] = "world food programme"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="save the childrensave the children")
-] = "save the children"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="wvi")
-] = "world vision international"
-match_df$perfect_match_name[
-  which(grepl("world vision|vision mund", match_df$subgrant_recipient_org))
-] = "world vision international"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="acf")
-] = "action against hunger"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="action contre la faim espagne")
-] = "action against hunger"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="cww")
-] = "concern worldwide"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="dan church aid")
-] = "dca"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="drc")
-] = "danish refugee council"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="norwegian refugee council")
-] = "nrc"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="pin")
-] = "people in need"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="unrwa")
-] = "united nations relief and works agency for palestine refugees in the near east"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="unrwa united nations relief and wor")
-] = "united nations relief and works agency for palestine refugees in the near east"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="the united nations relief and works")
-] = "united nations relief and works agency for palestine refugees in the near east"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="united nations children s fund")
-] = "unicef"
-match_df$perfect_match_name[
-  which(grepl("red (cross|crescent)", match_df$subgrant_recipient_org))
-] = "red cross and red crescent movement"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="plan malawi")
-] = "plan international"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="adra romania")
-] = "adventist development and relief agency"
-match_df$perfect_match_name[
-  which(match_df$subgrant_recipient_org=="somali cash consortium")
-] = "concern worldwide"
-
-match_df$unmatched = is.na(match_df$perfect_match_name) &
-  is.na(match_df$fuzzy_match_name) &
-  is.na(match_df$substring_a_match_name) &
-  is.na(match_df$substring_b_match_name)
-View(subset(match_df, unmatched, select="subgrant_recipient_org"))
-
-subgrant_org_mapping = match_df$perfect_match_name
-subgrant_org_mapping[which(is.na(subgrant_org_mapping))] = 
-  match_df$fuzzy_match_name[which(is.na(subgrant_org_mapping))]
-subgrant_org_mapping[which(is.na(subgrant_org_mapping))] = 
-  match_df$substring_a_match_name[which(is.na(subgrant_org_mapping))]
-subgrant_org_mapping[which(is.na(subgrant_org_mapping))] = 
-  match_df$substring_b_match_name[which(is.na(subgrant_org_mapping))]
-names(subgrant_org_mapping) = match_df$subgrant_recipient_org
-sub_grants$clean_org = subgrant_org_mapping[sub_grants$clean_name]
-sub_grants$newMoney = "FALSE"
-
-# Aggregate
-sub_grants_agg = data.table(sub_grants)[
-  ,.(PC.USD.m_subgrant=sum(Amount.USD, na.rm=T)),
-  by=.(clean_org, Year, newMoney)
-]
-sub_grants_agg = subset(sub_grants_agg, !is.na(clean_org))
-
-# Merge and subtract
-cva_agg = merge(cva_agg, sub_grants_agg, by=c("clean_org", "Year", "newMoney"), all.x=T)
-cva_agg$PC.USD.m_subgrant[which(is.na(cva_agg$PC.USD.m_subgrant))] = 0
-cva_agg$PC.USD.m_undoubled = cva_agg$PC.USD.m - cva_agg$PC.USD.m_subgrant
-cva_agg$PC.USD.m_undoubled = pmax(cva_agg$PC.USD.m_undoubled, 0)
-
-# calculate an undoubled TV column equal to the TV column minus the ‘to be undoubled’ PC sub-grant value 
-# for the respective sub-grant donor times the PC TV estimate % for the respective year
-setnames(pc_tv_estimate, "year", "Year")
-cva_agg = merge(cva_agg, pc_tv_estimate, by="Year", all.x=T)
-cva_agg$TV.USD.m_subgrant = cva_agg$PC.USD.m_subgrant * cva_agg$PC.average.used
-cva_agg$PC.average.used = NULL
-cva_agg$TV.USD.m_undoubled = cva_agg$TV.USD.m - cva_agg$TV.USD.m_subgrant
-cva_agg$TV.USD.m_undoubled = pmax(cva_agg$TV.USD.m_undoubled, 0)
-
-cva_agg_org_type = cva_agg[,.(
-  PC.USD.m=sum(PC.USD.m_undoubled, na.rm=T),
-  TV.USD.m=sum(TV.USD.m_undoubled, na.rm=T)
-), by=.(Year, Org_type)]
-
-# Write
+# Write outputs
 fwrite(cva_agg, "output/cva_agg.csv")
 fwrite(cva_agg_org_type, "output/cva_agg_org_type.csv")
+message("Written output/cva_agg.csv and output/cva_agg_org_type.csv")
+
+# Summary
+message("\nGlobal CVA by year (PC USD billions, de-doubled):")
+print(cva_agg[, .(PC_bn = round(sum(PC.USD.m_undoubled, na.rm = T) / 1e3, 2), TV_bn = round(sum(TV.USD.m_undoubled, na.rm = T) / 1e3, 2)), by = Year][order(Year)])

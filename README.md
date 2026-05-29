@@ -28,8 +28,7 @@ Rscript code/06_fetch_projects.R
 Rscript code/07_process_project_data.R
 Rscript code/08_fts_keyword_searching_cash.R # Pausing halfway to run Python code
 cd classifier_code
-source venv/bin/activate
-python3 flow_inference.py
+run_model.ps1
 cd ..
 # Finish 08
 Rscript code/09_calculate_cva.R
@@ -38,7 +37,7 @@ Rscript code/10_global_cva_analysis.R
 
 ## File purposes and descriptions
 
-### code/01_fts_get_flows.R
+### code/util/util_fts_get_flows.R
 
 This script accesses the Financial Tracking Service (FTS) API to retrieve flows data. The data can be filtered by year, plan ID, emergency ID, global cluster ID, and destination location ID. The script also includes an option to unnest the output, which is recommended for large downloads.
 
@@ -56,7 +55,7 @@ This script accesses the Financial Tracking Service (FTS) API to retrieve flows 
 **Purpose:**
 - To retrieve and process flows data from the FTS API.
 
-### code/02_fts_split_rows.R
+### code/util/util_fts_split_rows.R
 
 This script splits rows in the FTS flows data by a chosen column. It is useful for handling cases where a single flow entry needs to be divided into multiple entries based on a specified pattern.
 
@@ -73,7 +72,7 @@ This script splits rows in the FTS flows data by a chosen column. It is useful f
 **Purpose:**
 - To divide flow entries into multiple rows based on a specified column.
 
-### code/03_deflators.R
+### code/util/util_deflators.R
 
 This script retrieves and calculates GDP deflators for various countries using data from the IMF World Economic Outlook (WEO) database. The deflators are used to adjust financial data for inflation, allowing for comparisons in constant prices.
 
@@ -89,12 +88,12 @@ This script retrieves and calculates GDP deflators for various countries using d
 **Purpose:**
 - To provide GDP deflators for adjusting financial data to constant prices.
 
-### code/04_fts_curated_flows.R
+### code/util/util_fts_curated_flows.R
 
 This script downloads and curates FTS flows data from the FTS API. It processes the data to remove outgoing flows, duplicates, and pledges, and applies various transformations to ensure accurate analysis.
 
 **Inputs:**
-- `years`: A vector of years for which to download and process data (default is 2017:2024).
+- `years`: A vector of years for which to download and process data (default is 2018:2025).
 - `update_years`: A vector of years to update even if data already exists (default is NA).
 - `dataset_path`: The path to save the downloaded data (default is "fts").
 - `base_year`: The base year for deflation (default is 2022).
@@ -112,7 +111,7 @@ This script downloads and curates FTS flows data from the FTS API. It processes 
 This script orchestrates the downloading, processing, and saving of curated FTS flows data. It uses the `fts_curated_flows` function to retrieve and process the data, and then saves the curated data for each specified year.
 
 **Inputs:**
-- `years`: A vector of years for which to download and process data (default is 2017:2024).
+- `years`: A vector of years for which to download and process data (default is 2018:2025).
 - `update_years`: A vector of years to update even if data already exists (default is NA).
 - `path`: The path to save the curated data (default is "fts/").
 
@@ -127,7 +126,7 @@ This script orchestrates the downloading, processing, and saving of curated FTS 
 This script fetches project data from the FTS API for specified years. It retrieves detailed information about each project, including objectives, global clusters, and associated organizations, and saves the data for further analysis.
 
 **Inputs:**
-- `years`: A vector of years for which to fetch project data (default is 2017:2024).
+- `years`: A vector of years for which to fetch project data (default is 2018:2025).
 
 **Outputs:**
 - RData files containing detailed project data for each specified year, saved in the "projects" directory.
