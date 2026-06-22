@@ -1,165 +1,166 @@
-list.of.packages <- c("data.table", "jsonlite","tidyverse", "httr")
-new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
-if(length(new.packages)) install.packages(new.packages)
-suppressPackageStartupMessages(lapply(list.of.packages, require, character.only=T))
+# 07_process_project_data.R
+# Processes the HPC project Q&A data to produce per-project CVA flags and
+# planned budget percentages, which are later joined to FTS flows.
+#
+# Outputs:
+# output/questions.csv — all unique question strings (for review)
+# output/potential_new_cash_questions.csv — newly detected CVA questions
+# projects/cash_projects.csv — per-project cva_percentage & cva flag
+# projects/project_text.csv — project name + objective text
+#
+# Run from the project root:
+# Rscript code/07_process_project_data.R
 
-getCurrentFileLocation <-  function()
-{
-  this_file <- commandArgs() %>% 
-    tibble::enframe(name = NULL) %>%
-    tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
-    dplyr::filter(key == "--file") %>%
-    dplyr::pull(value)
-  if (length(this_file)==0)
-  {
-    this_file <- rstudioapi::getSourceEditorContext()$path
-  }
-  return(dirname(this_file))
-}
+source("code/util/utils.R")
+enforce_project_root()
+load_packages("data.table")
 
-setwd(getCurrentFileLocation())
-setwd("..")
-
-# Load and merge project-level data
-project_list = list()
-project_index = 1
-for(year in 2017:2024){
-  message(year)
-  load(paste0("projects/project_data_",year,".RData"))
-  project_list[[project_index]] = all_projects
-  project_index = project_index + 1
-}
-
-all_projects <- rbindlist(
-  project_list
-)
-questions <- unique(all_projects$question)
-if(!dir.exists("output")){
+years <- 2018:2025
+if (!dir.exists("output"))
   dir.create("output")
+
+# Load and combine all project years
+project_list <- lapply(years, function(yr) {
+  load(paste0("projects/project_data_", yr, ".RData")) # loads all_projects
+  all_projects
+})
+all_projects <- rbindlist(project_list, fill = T, use.names = T)
+rm(project_list)
+gc()
+
+# Identify questions potentially related to CVA
+all_questions <- unique(all_projects$question)
+fwrite(data.table(question = all_questions), "output/questions.csv")
+
+cash_kw <- paste0("\\b(", paste(
+  c(
+    "cash",
+    "voucher",
+    "vouchers",
+    "cash transfer",
+    "cash grant",
+    "unconditional cash",
+    "money",
+    "conditional cash transfer",
+    "argent",
+    "monetaires",
+    "bons",
+    "espèces",
+    "monnaie",
+    "monétaires",
+    "monétaire",
+    "tokens",
+    "coupons",
+    "cupones",
+    "public works programme",
+    "social assistance",
+    "social safety net",
+    "social transfer",
+    "social protection",
+    # acronyms — case-sensitive match below
+    "CVA",
+    "CCT",
+    "UCT",
+    "CTP",
+    "CFW",
+    "CFA",
+    "SSN",
+    "ESSN",
+    "MPC",
+    "MPCT"
+  ),
+  collapse = "|"
+), ")\\b")
+
+potential_cash_qs <- all_questions[grepl(cash_kw, all_questions, ignore.case = T)]
+
+labeled_qs <- fread("reference_datasets/cva_project_questions.csv", encoding = "UTF-8")
+new_qs <- setdiff(potential_cash_qs, labeled_qs$Question)
+if (length(new_qs)) {
+  fwrite(data.table(question = new_qs),
+         "output/potential_new_cash_questions.csv")
+  message(
+    length(new_qs),
+    " potentially new CVA question(s) written to ",
+    "output/potential_new_cash_questions.csv — please review and label."
+  )
 }
-write.csv(questions, "output/questions.csv", fileEncoding = "UTF-8", row.names = FALSE, quote = TRUE)
 
-# Search for cash questions
-cash.noncase.keywords <- c(
-  "cash",
-  "voucher",
-  "vouchers",
-  "cash transfer",
-  "cash grant", 
-  "unconditional cash",
-  "money",
-  "conditional cash transfer",
-  "argent",
-  "monetaires",
-  "bons",
-  "espèces",
-  "monnaie",
-  "monétaires",
-  "tokens",
-  "coupons",
-  "cupones",
-  "transfert monétaire",
-  "transfer monétaire",
-  "transferencias monetarias",
-  "public works programme",
-  "social assistance",
-  "social safety net",
-  "social transfer",
-  "social protection",
-  "CVA",
-  "CCT",
-  "UCT",
-  "CTP",
-  "CFW",
-  "CFA",
-  "SSN",
-  "ESSN",
-  "MPC",
-  "MPCT")
+# Separate quantitative (percentage) and boolean (yes/no) questions
+quant_qs <- labeled_qs[`Question type` %in% c("quantC", "quantV"), Question]
+bool_qs <- labeled_qs[`Question type` == "flagCVA", Question]
 
-cash.noncase.keywords = paste0(
-  "\\b",
-  paste(cash.noncase.keywords, collapse="\\b|\\b"),
-  "\\b"
-)
-potential_cash_questions <- questions[grepl(cash.noncase.keywords, questions, ignore.case=T)]
+quant_rows <- all_projects[question %in% quant_qs]
+bool_rows <- all_projects[question %in% bool_qs]
 
-# Load pre-labeled
-questions_labeled = fread("reference_datasets/cva_project_questions.csv")
-new_potential_cash_questions = setdiff(potential_cash_questions, questions_labeled$Question)
-if(length(new_potential_cash_questions) > 0){
-  write.csv(questions, "output/potential_new_cash_questions.csv", fileEncoding = "UTF-8", row.names = FALSE, quote = TRUE)
-}
-
-quant_labeled_questions = subset(questions_labeled, `Question type` %in% c("quantC", "quantV"))$Question
-flag_labeled_questions = subset(questions_labeled, `Question type` == "flagCVA")$Question
-
-quant_cash_projects <- subset(all_projects, question %in% quant_labeled_questions)
-boolean_cash_projects = subset(all_projects, question %in% flag_labeled_questions)
-
-pattern <- "\\d+\\.\\d+|\\d+%|\\d+"
-quant_cash_projects <- quant_cash_projects[grepl(pattern, answer)]
-
-# Standardize answers
-standardize_percentage <- function(x) {
+# Standardise percentage answers
+standardize_pct <- function(x) {
   x <- trimws(tolower(x))
-  if (grepl("%", x)) {
-    num <- gsub(".*?(\\d+(\\.\\d+)?%).*", "\\1", x)  
-    num <- gsub("%", "", num)  
-  } else if (grepl("less than 1", x)) {
-    num <- "0"
-  } else if (grepl("percent", x)) {
-    num <- gsub(".*?(\\d+(\\.\\d+)? percent).*", "\\1", x)  
-    num <- gsub("percent", "", num)  
-  } else if (grepl("^[0-9]+(\\.[0-9]+)?$", x)) {
-    num <- x
+  num <- NA_real_
+  
+  if (grepl("%", x, fixed = T)) {
+    # "40%", "40 %", "about 40%", etc.
+    m <- regmatches(x, regexpr("[0-9]+(?:\\.[0-9]+)?(?=\\s*%)", x, perl = T))
+    if (length(m))
+      num <- as.numeric(m)
+    
+  } else if (grepl("percent", x, fixed = T)) {
+    m <- regmatches(x,
+                    regexpr("[0-9]+(?:\\.[0-9]+)?(?=\\s*percent)", x, perl = T))
+    if (length(m))
+      num <- as.numeric(m)
+    
+  } else if (grepl("^[0-9]+(?:\\.[0-9]+)?$", x, perl = T)) {
+    num <- as.numeric(x)
+    
+  } else if (grepl("less than 1", x, fixed = T)) {
+    num <- 0
+    
   } else {
-    num <- gsub(".*?(\\d+(\\.\\d+)?%).*", "\\1", x)  
-    if (num == "") {
-      num <- NA
-    } else {
-      num <- gsub("%", "", num)  
-    }
+    # Last resort: extract first numeric token
+    m <- regmatches(x, regexpr("[0-9]+(?:\\.[0-9]+)?", x, perl = T))
+    if (length(m))
+      num <- as.numeric(m)
   }
-    num <- gsub("[^0-9.]", "", num)
-    num <- as.numeric(num)
-    return(num)
-}
-quant_cash_projects <- quant_cash_projects[, standardized_percentage := sapply(answer, standardize_percentage)]
-
-quant_cash_projects = quant_cash_projects[,.(cva_percentage = sum(standardized_percentage)), by=.(project_id)]
-quant_cash_projects$cva_percentage[which(quant_cash_projects$cva_percentage > 100)] = 100
-quant_cash_projects$cva_percentage = quant_cash_projects$cva_percentage / 100
-
-standardize_boolean = function(x){
-  if(tolower(x) %in% c("true", "qui", "yes")){
-    return(T)
-  }
-  return(F)
+  
+  num
 }
 
-boolean_cash_projects$boolean_answer = sapply(boolean_cash_projects$answer, standardize_boolean)
+# Only keep answers that contain at least one numeric token
+quant_rows <- quant_rows[grepl("[0-9]", answer)]
+quant_rows[, pct := vapply(answer, standardize_pct, numeric(1))]
 
-boolean_cash_projects = boolean_cash_projects[,.(cva=max(boolean_answer)==1), by=.(project_id)]
+# Sum cash + voucher percentages per project; cap at 100
+# NOTE: summing quantC and quantV can exceed 100 if both refer to overlapping
+# portions of the budget. The cap prevents obvious over-counting but the
+# underlying ambiguity remains; see GUIDE.md for discussion.
+quant_by_proj <- quant_rows[!is.na(pct), .(cva_percentage = min(sum(pct), 100) / 100), by = project_id]
 
-# Find and fix overlaps
-zero_percents = subset(quant_cash_projects, cva_percentage == 0)
-zero_to_bool = data.table(project_id = zero_percents$project_id, cva=F)
-new_zero_ids = setdiff(zero_to_bool$project_id, boolean_cash_projects$project_id)
-zero_to_bool = subset(zero_to_bool, project_id %in% new_zero_ids)
-boolean_cash_projects = rbind(boolean_cash_projects, zero_to_bool)
+# Standardise boolean answers
+TRUE_VALUES <- c("true", "oui", "yes")
+bool_rows[, bool_val := tolower(answer) %in% TRUE_VALUES]
+bool_by_proj <- bool_rows[, .(cva = any(bool_val)), by = project_id]
 
-false_bools = subset(boolean_cash_projects, !cva)
-bool_to_zero = data.table(project_id = false_bools$project_id, cva_percentage=0)
-new_bool_ids = setdiff(bool_to_zero$project_id, quant_cash_projects$project_id)
-bool_to_zero = subset(bool_to_zero, project_id %in% new_bool_ids)
-quant_cash_projects = rbind(quant_cash_projects, bool_to_zero)
+# Reconcile overlaps between the two sources
+# 0% quantitative: treat as cva = FALSE in the boolean table (if not already)
+zero_pct <- quant_by_proj[cva_percentage == 0, .(project_id, cva = F)]
+zero_pct <- zero_pct[!project_id %in% bool_by_proj$project_id]
+bool_by_proj <- rbindlist(list(bool_by_proj, zero_pct))
 
-cash_bool_and_percentage = merge(quant_cash_projects, boolean_cash_projects, all=T)
-cash_bool_and_percentage$cva[which(cash_bool_and_percentage$cva_percentage > 0)] = T
-cash_bool_and_percentage$cva[which(cash_bool_and_percentage$cva_percentage==0)] = F
+# F boolean: add 0% row to quantitative table (if not already)
+false_bool <- bool_by_proj[cva == F, .(project_id, cva_percentage = 0)]
+false_bool <- false_bool[!project_id %in% quant_by_proj$project_id]
+quant_by_proj <- rbindlist(list(quant_by_proj, false_bool))
 
-fwrite(cash_bool_and_percentage, "projects/cash_projects.csv")
+# Combine and make the two columns consistent
+cash_projects <- merge(quant_by_proj, bool_by_proj, by = "project_id", all = T)
+cash_projects[cva_percentage > 0, cva := T]
+cash_projects[cva_percentage == 0, cva := F]
 
-project_text = unique(all_projects[,c("project_id", "project_name", "project_objective")])
+fwrite(cash_projects, "projects/cash_projects.csv")
+
+# Project text for ML input
+project_text <- unique(all_projects[, .(project_id, text = paste(project_name, project_objective))])
 fwrite(project_text, "projects/project_text.csv")
+
+message("Done. Outputs written to projects/ and output/.")

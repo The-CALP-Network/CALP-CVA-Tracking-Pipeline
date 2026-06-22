@@ -43,7 +43,6 @@ PyYAML==6.0.2
 regex==2024.11.6
 requests==2.32.3
 safetensors==0.5.2
-scipy==1.15.1
 setuptools==75.8.0
 six==1.17.0
 sympy==1.13.1

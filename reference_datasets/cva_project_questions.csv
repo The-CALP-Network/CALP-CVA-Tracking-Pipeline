@@ -166,3 +166,29 @@ Este proyecto se basa en transferencias monetarias?,flagCVA
 3.1.1. % estimé du projet en espèces-coupon / % estimated of the project for cash-voucher,quantV
 3.1.b. Number of targeted people for cash programming,otherCVA
 3.1.a. % of financial requirement targeted in US$ for cash programming,quantC
+3. Le projet inclut-il des transferts monétaires?,flagCVA
+1.1. Sectoral cash,flagCVA
+3.1 - Does this project involve CTP?,flagCVA
+5.1 -Projet intègre t-il une composante cash?,flagCVA
+5.2  Transfert monétaire,flagCVA
+4.2  Transfert monétaire,flagCVA
+9.1. ¿Transferencias monetarias o cupones?,flagCVA
+3.1. Is the project using cash or voucher assistance (CVA) modality?,flagCVA
+3.2. Sectoral cash,flagCVA
+6.1 - Is the project using cash or voucher assistance (CVA) modality?,flagCVA
+6.2 - Sectoral cash,flagCVA
+1.1 Sectoral cash,flagCVA
+3.1 Le projet utilise-t-il le mode d'assistance en espèce ou par bons (CVA),flagCVA
+3.2. Transfer monétaire,flagCVA
+4.2.1. % estimé du budget prévu pour l’assistance par transfert monétaire,quantC
+3.1.1 - Estimated % of requirements to be used for cash transfer,quantC
+5.2.1. % estimé du budget prévu pour l’assistance par transfert monétaire,quantC
+3.2.1. % estimé du budget prévu pour l’assistance par transfert monétaire,quantC
+3.2.a. Estimated percentage of project requirements to be used for cash,quantC
+6.2.a - Estimated percentage of project requirements to be used for cash,quantC
+3.1.2 - Estimated % of requirements to be used for voucher assistance,quantV
+1.1.b. % estimado de presupuesto previsto para la asistencia en cupones/vouchers*,quantV
+1.1.b. % estimado de presupuesto previsto para la asistencia en cupones/vouchers,quantV
+3.2.b. Estimated percentage of project requirements to be used for voucher,quantV
+9.1.2. ¿Cuál es el porcentaje estimado de los requerimientos utilizados para cupones?,quantV
+6.2.b - Estimated percentage of project requirements to be used for vouchers,quantV
